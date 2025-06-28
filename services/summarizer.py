@@ -5,6 +5,7 @@ from config import Config
 import json
 import re
 
+
 logger = logging.getLogger(__name__)
 
 class ChatSummarizer:
@@ -423,3 +424,9 @@ Example format:
         except Exception as e:
             logger.error(f"Error generating bullet summary: {e}")
             return {'error': str(e)} 
+        
+
+
+
+chat = ChatSummarizer()
+print(chat.generate_summary([{}]))
