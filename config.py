@@ -6,11 +6,6 @@ load_dotenv()
 
 class Config:
     """Base configuration class"""
-    
-    # Flask settings
-    SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
-    DEBUG = os.getenv('FLASK_DEBUG', 'True').lower() == 'true'
-    
     # MongoDB settings
     MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/')
     MONGODB_DATABASE = os.getenv('MONGODB_DATABASE', 'whatsapp_summarizer')

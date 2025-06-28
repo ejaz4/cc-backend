@@ -7,7 +7,8 @@ from datetime import datetime
 import uuid
 
 from config import Config
-#from database.repository import UserProfileRepository
+
+from database.repository import UserProfileRepository
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ class ElevenLabsService:
             "Content-Type": "application/json",
             "xi-api-key": self.api_key
         }
-        #self.user_profile_repo = UserProfileRepository()
+        self.user_profile_repo = UserProfileRepository()
     
     def get_available_voices(self) -> List[Dict[str, Any]]:
         """Get list of available ElevenLabs voices"""
