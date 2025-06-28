@@ -16,7 +16,8 @@ class Config:
     MONGODB_DATABASE = os.getenv('MONGODB_DATABASE', 'whatsapp_summarizer')
     
     # ElevenLabs settings
-    ELEVENLABS_API_KEY = os.getenv('ELEVENLABS_API_KEY')
+    #ELEVENLABS_API_KEY_old = os.getenv('ELEVENLABS_API_KEY')
+    ELEVENLABS_API_KEY = 'sk_ea44a8ae63500d4e10e9ff6a7bd3c041a0fe27260cfc79c2'
     ELEVENLABS_BASE_URL = 'https://api.elevenlabs.io/v1'
     
     # OpenAI settings

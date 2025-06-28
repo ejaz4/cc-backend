@@ -8,13 +8,15 @@ from datetime import datetime
 
 from database.connection import connect_db
 from database.repository import (
-    ChatSessionRepository, UserRepository, SummaryRepository, 
-    AudioFileRepository, AssistantSessionRepository, CalendarEventRepository
+    ConversationSessionRepository, MainUserRepository, SummaryRepository, 
+    AudioFileRepository, AssistantSessionRepository, CalendarEventRepository,
+    UserProfileRepository, PlatformIntegrationRepository
 )
 from services.whatsapp_parser import WhatsAppParser
 from services.summarizer import ChatSummarizer
 from services.elevenlabs_service import ElevenLabsService
 from services.assistant_service import AssistantService
+from services.conversation_processor import ConversationProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -34,14 +36,17 @@ def create_app():
     summarizer = ChatSummarizer()
     elevenlabs_service = ElevenLabsService()
     assistant_service = AssistantService()
+    conversation_processor = ConversationProcessor()
     
     # Initialize repositories
-    chat_repo = ChatSessionRepository()
-    user_repo = UserRepository()
+    conversation_repo = ConversationSessionRepository()
+    main_user_repo = MainUserRepository()
     summary_repo = SummaryRepository()
     audio_repo = AudioFileRepository()
     assistant_repo = AssistantSessionRepository()
     calendar_repo = CalendarEventRepository()
+    user_profile_repo = UserProfileRepository()
+    platform_integration_repo = PlatformIntegrationRepository()
     
     @app.route('/api/health', methods=['GET'])
     def health_check():
@@ -49,12 +54,39 @@ def create_app():
         return jsonify({
             'status': 'healthy',
             'timestamp': datetime.utcnow().isoformat(),
-            'service': 'WhatsApp Summarizer API'
+            'service': 'Multi-Platform Conversation Summarizer API'
         })
     
-    @app.route('/api/upload', methods=['POST'])
-    def upload_chat():
-        """Upload and parse WhatsApp chat file"""
+    @app.route('/api/conversations/upload', methods=['POST'])
+    def upload_conversation():
+        """Upload conversation data from any platform"""
+        try:
+            data = request.get_json()
+            
+            if not data:
+                return jsonify({'error': 'No data provided'}), 400
+            
+            # Validate required fields
+            required_fields = ['platform', 'main_user']
+            for field in required_fields:
+                if field not in data:
+                    return jsonify({'error': f'{field} is required'}), 400
+            
+            # Process conversation
+            result = conversation_processor.process_conversation(data)
+            
+            if 'error' in result:
+                return jsonify({'error': result['error']}), 500
+            
+            return jsonify(result), 201
+            
+        except Exception as e:
+            logger.error(f"Error uploading conversation: {e}")
+            return jsonify({'error': str(e)}), 500
+    
+    @app.route('/api/conversations/upload-file', methods=['POST'])
+    def upload_conversation_file():
+        """Upload conversation file (legacy support for WhatsApp)"""
         try:
             if 'file' not in request.files:
                 return jsonify({'error': 'No file provided'}), 400
@@ -82,76 +114,84 @@ def create_app():
             if 'error' in parsed_data:
                 return jsonify({'error': parsed_data['error']}), 500
             
-            # Create chat session
-            chat_session_data = {
+            # Create conversation data
+            conversation_data = {
+                'platform': 'whatsapp',
+                'main_user': request.form.get('main_user', 'unknown_user'),
                 'group_name': request.form.get('group_name', 'Unknown Group'),
-                'session_id': session_id,
-                'messages': parsed_data['messages'],
-                'participants': parsed_data['participants'],
-                'status': 'uploaded',
-                'file_path': file_path,
-                'total_messages': parsed_data['total_messages'],
-                'date_range': parsed_data['date_range']
+                'conversation': file.read().decode('utf-8'),
+                'conversation_type': 'group'
             }
             
-            chat_id = chat_repo.create(chat_session_data)
+            # Process conversation
+            result = conversation_processor.process_conversation(conversation_data)
             
-            return jsonify({
-                'success': True,
-                'session_id': session_id,
-                'chat_id': chat_id,
-                'participants': parsed_data['participants'],
-                'total_messages': parsed_data['total_messages'],
-                'date_range': parsed_data['date_range']
-            }), 201
+            if 'error' in result:
+                return jsonify({'error': result['error']}), 500
+            
+            return jsonify(result), 201
             
         except Exception as e:
-            logger.error(f"Error uploading chat: {e}")
+            logger.error(f"Error uploading conversation file: {e}")
             return jsonify({'error': str(e)}), 500
     
-    @app.route('/api/summarize/<session_id>', methods=['POST'])
-    def summarize_chat(session_id):
-        """Generate summary for a chat session"""
+    @app.route('/api/conversations/<session_id>/summarize', methods=['POST'])
+    def summarize_conversation(session_id):
+        """Generate summary for a conversation session"""
         try:
-            # Get chat session
-            chat_session = chat_repo.find_by_session_id(session_id)
-            if not chat_session:
-                return jsonify({'error': 'Chat session not found'}), 404
+            # Get conversation session
+            conversation_session = conversation_repo.find_by_session_id(session_id)
+            if not conversation_session:
+                return jsonify({'error': 'Conversation session not found'}), 404
             
             # Update status to processing
-            chat_repo.update_status(session_id, 'processing')
+            conversation_repo.update_status(session_id, 'processing')
             
-            # Generate summary
-            summary_data = summarizer.generate_summary(
-                chat_session['messages'],
-                chat_session['participants']
+            # Get user profiles for context
+            participants = conversation_session['participants']
+            main_user = conversation_session['main_user']
+            platform = conversation_session['platform']
+            
+            # Get user context for better summarization
+            user_contexts = {}
+            for participant in participants:
+                context = conversation_processor.get_user_context(main_user, participant, platform)
+                user_contexts[participant] = context
+            
+            # Generate summary with context
+            summary_data = summarizer.generate_summary_with_context(
+                conversation_session['messages'],
+                participants,
+                user_contexts
             )
             
             if 'error' in summary_data:
-                chat_repo.update_status(session_id, 'failed')
+                conversation_repo.update_status(session_id, 'failed')
                 return jsonify({'error': summary_data['error']}), 500
             
             # Save summary
             summary_data['session_id'] = session_id
+            summary_data['main_user'] = main_user
             summary_id = summary_repo.create(summary_data)
             
-            # Update chat session status
-            chat_repo.update_status(session_id, 'summarized')
+            # Update conversation session status
+            conversation_repo.update_status(session_id, 'summarized')
             
             return jsonify({
                 'success': True,
                 'summary_id': summary_id,
                 'summary_text': summary_data['summary_text'],
                 'script_lines': summary_data['script_lines'],
-                'participants': summary_data['participants']
+                'participants': summary_data['participants'],
+                'personality_context': summary_data.get('personality_context', {})
             }), 200
             
         except Exception as e:
-            logger.error(f"Error summarizing chat: {e}")
-            chat_repo.update_status(session_id, 'failed')
+            logger.error(f"Error summarizing conversation: {e}")
+            conversation_repo.update_status(session_id, 'failed')
             return jsonify({'error': str(e)}), 500
     
-    @app.route('/api/generate-audio/<session_id>', methods=['POST'])
+    @app.route('/api/conversations/<session_id>/generate-audio', methods=['POST'])
     def generate_audio(session_id):
         """Generate TTS audio for script lines"""
         try:
@@ -164,8 +204,24 @@ def create_app():
             if not script_lines:
                 return jsonify({'error': 'No script lines found'}), 400
             
-            # Generate audio files
-            audio_results = elevenlabs_service.generate_batch_speech(script_lines, session_id)
+            # Get conversation session for context
+            conversation_session = conversation_repo.find_by_session_id(session_id)
+            if not conversation_session:
+                return jsonify({'error': 'Conversation session not found'}), 404
+            
+            # Get user profiles for voice assignment
+            participants = conversation_session['participants']
+            main_user = conversation_session['main_user']
+            platform = conversation_session['platform']
+            
+            # Generate audio files with personality-based voice settings
+            audio_results = elevenlabs_service.generate_batch_speech_with_profiles(
+                script_lines, 
+                session_id, 
+                participants, 
+                main_user, 
+                platform
+            )
             
             # Save audio file records
             audio_files = []
@@ -181,7 +237,9 @@ def create_app():
                         'duration': result.get('duration'),
                         'file_size': result.get('file_size'),
                         'status': 'completed',
-                        'elevenlabs_generation_id': result.get('generation_id')
+                        'elevenlabs_generation_id': result.get('generation_id'),
+                        'voice_settings': result.get('voice_settings', {}),
+                        'emotion_context': result.get('emotion_context', {})
                     }
                     audio_id = audio_repo.create(audio_data)
                     audio_files.append({
@@ -202,8 +260,8 @@ def create_app():
                     }
                     audio_repo.create(audio_data)
             
-            # Update chat session status
-            chat_repo.update_status(session_id, 'completed')
+            # Update conversation session status
+            conversation_repo.update_status(session_id, 'completed')
             
             return jsonify({
                 'success': True,
@@ -240,13 +298,13 @@ def create_app():
             logger.error(f"Error serving audio: {e}")
             return jsonify({'error': str(e)}), 500
     
-    @app.route('/api/sessions/<session_id>', methods=['GET'])
-    def get_session(session_id):
-        """Get chat session details"""
+    @app.route('/api/conversations/<session_id>', methods=['GET'])
+    def get_conversation(session_id):
+        """Get conversation session details"""
         try:
-            # Get chat session
-            chat_session = chat_repo.find_by_session_id(session_id)
-            if not chat_session:
+            # Get conversation session
+            conversation_session = conversation_repo.find_by_session_id(session_id)
+            if not conversation_session:
                 return jsonify({'error': 'Session not found'}), 404
             
             # Get summary
@@ -256,29 +314,108 @@ def create_app():
             audio_files = audio_repo.find_by_session_id(session_id)
             
             return jsonify({
-                'session': chat_session,
+                'conversation': conversation_session,
                 'summary': summary,
                 'audio_files': audio_files
             }), 200
             
         except Exception as e:
-            logger.error(f"Error getting session: {e}")
+            logger.error(f"Error getting conversation: {e}")
             return jsonify({'error': str(e)}), 500
     
-    @app.route('/api/sessions', methods=['GET'])
-    def list_sessions():
-        """List all chat sessions"""
+    @app.route('/api/conversations', methods=['GET'])
+    def list_conversations():
+        """List all conversation sessions for a user"""
         try:
+            main_user = request.args.get('main_user')
+            platform = request.args.get('platform')
             limit = request.args.get('limit', 10, type=int)
-            sessions = chat_repo.find_recent_sessions(limit)
+            
+            if not main_user:
+                return jsonify({'error': 'main_user parameter is required'}), 400
+            
+            filter_dict = {'main_user': main_user}
+            if platform:
+                filter_dict['platform'] = platform
+            
+            conversations = conversation_repo.find_all(filter_dict, limit=limit, sort_by='created_at')
             
             return jsonify({
-                'sessions': sessions,
-                'total': len(sessions)
+                'conversations': conversations,
+                'total': len(conversations)
             }), 200
             
         except Exception as e:
-            logger.error(f"Error listing sessions: {e}")
+            logger.error(f"Error listing conversations: {e}")
+            return jsonify({'error': str(e)}), 500
+    
+    @app.route('/api/users/profiles', methods=['GET'])
+    def get_user_profiles():
+        """Get user profiles for a main user"""
+        try:
+            main_user = request.args.get('main_user')
+            platform = request.args.get('platform')
+            relationship_type = request.args.get('relationship_type')
+            
+            if not main_user:
+                return jsonify({'error': 'main_user parameter is required'}), 400
+            
+            filter_dict = {'main_user': main_user}
+            if platform:
+                filter_dict['platform'] = platform
+            if relationship_type:
+                filter_dict['relationship_type'] = relationship_type
+            
+            profiles = user_profile_repo.find_all(filter_dict)
+            
+            return jsonify({
+                'profiles': profiles,
+                'total': len(profiles)
+            }), 200
+            
+        except Exception as e:
+            logger.error(f"Error getting user profiles: {e}")
+            return jsonify({'error': str(e)}), 500
+    
+    @app.route('/api/users/profiles/<profile_id>', methods=['PUT'])
+    def update_user_profile(profile_id):
+        """Update user profile"""
+        try:
+            data = request.get_json()
+            
+            if not data:
+                return jsonify({'error': 'No data provided'}), 400
+            
+            success = user_profile_repo.update(profile_id, data)
+            
+            if success:
+                return jsonify({'success': True, 'message': 'Profile updated successfully'}), 200
+            else:
+                return jsonify({'error': 'Failed to update profile'}), 500
+                
+        except Exception as e:
+            logger.error(f"Error updating user profile: {e}")
+            return jsonify({'error': str(e)}), 500
+    
+    @app.route('/api/users/profiles/frequent', methods=['GET'])
+    def get_frequent_contacts():
+        """Get most frequent contacts for a user"""
+        try:
+            main_user = request.args.get('main_user')
+            limit = request.args.get('limit', 10, type=int)
+            
+            if not main_user:
+                return jsonify({'error': 'main_user parameter is required'}), 400
+            
+            profiles = user_profile_repo.find_frequent_contacts(main_user, limit)
+            
+            return jsonify({
+                'profiles': profiles,
+                'total': len(profiles)
+            }), 200
+            
+        except Exception as e:
+            logger.error(f"Error getting frequent contacts: {e}")
             return jsonify({'error': str(e)}), 500
     
     @app.route('/api/assistant/chat', methods=['POST'])
@@ -309,12 +446,17 @@ def create_app():
                 session_id = assistant_repo.create(session_data)
                 assistant_session = assistant_repo.find_by_session_id(session_id)
             
-            # Get context (calendar events, etc.)
+            # Get context (calendar events, user profiles, etc.)
             context = {}
             if user_id != 'default_user':
+                # Get upcoming events
                 upcoming_events = assistant_service.get_upcoming_events(user_id, max_results=5)
                 if upcoming_events.get('success'):
                     context['upcoming_events'] = upcoming_events['events']
+                
+                # Get user profiles for context
+                user_profiles = user_profile_repo.find_by_main_user(user_id)
+                context['user_profiles'] = user_profiles[:5]  # Top 5 profiles
             
             # Chat with assistant
             response = assistant_service.chat_with_assistant(message, session_id, context)

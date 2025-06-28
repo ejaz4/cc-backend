@@ -5,8 +5,8 @@ import logging
 
 from .connection import get_collection
 from .models import (
-    BaseModel, WhatsAppMessage, ChatSession, User, Summary, 
-    AudioFile, AssistantSession, CalendarEvent
+    BaseModel, PlatformMessage, ConversationSession, MainUser, UserProfile, Summary, 
+    AudioFile, AssistantSession, CalendarEvent, PlatformIntegration
 )
 
 logger = logging.getLogger(__name__)
@@ -83,30 +83,41 @@ class BaseRepository:
             logger.error(f"Error counting documents: {e}")
             return 0
 
-class ChatSessionRepository(BaseRepository):
-    """Chat session repository"""
+class ConversationSessionRepository(BaseRepository):
+    """Conversation session repository for all platforms"""
     
     def __init__(self):
-        super().__init__('chat_sessions')
+        super().__init__('conversation_sessions')
     
     def find_by_session_id(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """Find chat session by session ID"""
+        """Find conversation session by session ID"""
         return self.collection.find_one({'session_id': session_id})
     
-    def find_by_status(self, status: str) -> List[Dict[str, Any]]:
+    def find_by_platform(self, platform: str, main_user: str) -> List[Dict[str, Any]]:
+        """Find sessions by platform and main user"""
+        return self.find_all({'platform': platform, 'main_user': main_user})
+    
+    def find_by_status(self, status: str, main_user: str = None) -> List[Dict[str, Any]]:
         """Find sessions by status"""
-        return self.find_all({'status': status})
+        filter_dict = {'status': status}
+        if main_user:
+            filter_dict['main_user'] = main_user
+        return self.find_all(filter_dict)
     
     def update_status(self, session_id: str, status: str) -> bool:
         """Update session status"""
         return self.update(session_id, {'status': status})
     
-    def find_recent_sessions(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Find recent chat sessions"""
-        return self.find_all(limit=limit, sort_by='created_at')
+    def find_recent_sessions(self, main_user: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Find recent conversation sessions for a user"""
+        return self.find_all({'main_user': main_user}, limit=limit, sort_by='created_at')
+    
+    def find_by_participant(self, participant: str, main_user: str) -> List[Dict[str, Any]]:
+        """Find sessions where a specific participant was involved"""
+        return self.find_all({'participants': participant, 'main_user': main_user})
     
     def add_message(self, session_id: str, message: Dict[str, Any]) -> bool:
-        """Add a message to a chat session"""
+        """Add a message to a conversation session"""
         try:
             result = self.collection.update_one(
                 {'session_id': session_id},
@@ -117,18 +128,18 @@ class ChatSessionRepository(BaseRepository):
             logger.error(f"Error adding message: {e}")
             return False
 
-class UserRepository(BaseRepository):
-    """User repository"""
+class MainUserRepository(BaseRepository):
+    """Main user repository"""
     
     def __init__(self):
-        super().__init__('users')
+        super().__init__('main_users')
     
     def find_by_username(self, username: str) -> Optional[Dict[str, Any]]:
-        """Find user by username"""
+        """Find main user by username"""
         return self.collection.find_one({'username': username})
     
     def find_by_email(self, email: str) -> Optional[Dict[str, Any]]:
-        """Find user by email"""
+        """Find main user by email"""
         return self.collection.find_one({'email': email})
     
     def update_voice_id(self, user_id: str, voice_id: str, voice_name: str) -> bool:
@@ -136,8 +147,96 @@ class UserRepository(BaseRepository):
         return self.update(user_id, {'voice_id': voice_id, 'voice_name': voice_name})
     
     def find_active_users(self) -> List[Dict[str, Any]]:
-        """Find all active users"""
+        """Find all active main users"""
         return self.find_all({'is_active': True})
+    
+    def add_connected_platform(self, user_id: str, platform: str) -> bool:
+        """Add a platform to user's connected platforms"""
+        try:
+            result = self.collection.update_one(
+                {'_id': ObjectId(user_id)},
+                {'$addToSet': {'connected_platforms': platform}}
+            )
+            return result.modified_count > 0
+        except Exception as e:
+            logger.error(f"Error adding connected platform: {e}")
+            return False
+
+class UserProfileRepository(BaseRepository):
+    """User profile repository for people the main user talks to"""
+    
+    def __init__(self):
+        super().__init__('user_profiles')
+    
+    def find_by_username(self, username: str, platform: str, main_user: str) -> Optional[Dict[str, Any]]:
+        """Find user profile by username, platform, and main user"""
+        return self.collection.find_one({
+            'username': username,
+            'platform': platform,
+            'main_user': main_user
+        })
+    
+    def find_by_main_user(self, main_user: str, platform: str = None) -> List[Dict[str, Any]]:
+        """Find all user profiles for a main user"""
+        filter_dict = {'main_user': main_user}
+        if platform:
+            filter_dict['platform'] = platform
+        return self.find_all(filter_dict)
+    
+    def find_by_relationship_type(self, main_user: str, relationship_type: str) -> List[Dict[str, Any]]:
+        """Find user profiles by relationship type"""
+        return self.find_all({
+            'main_user': main_user,
+            'relationship_type': relationship_type
+        })
+    
+    def update_personality_data(self, profile_id: str, personality_data: Dict[str, Any]) -> bool:
+        """Update personality and context data"""
+        return self.update(profile_id, personality_data)
+    
+    def update_frequency_score(self, profile_id: str, frequency_score: float) -> bool:
+        """Update interaction frequency score"""
+        return self.update(profile_id, {
+            'frequency_score': frequency_score,
+            'last_interaction': datetime.utcnow()
+        })
+    
+    def find_frequent_contacts(self, main_user: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Find most frequent contacts for a main user"""
+        return self.find_all(
+            {'main_user': main_user},
+            limit=limit,
+            sort_by='frequency_score'
+        )
+    
+    def find_by_interests(self, main_user: str, interests: List[str]) -> List[Dict[str, Any]]:
+        """Find user profiles by interests"""
+        return self.find_all({
+            'main_user': main_user,
+            'interests': {'$in': interests}
+        })
+    
+    def create_or_update_profile(self, profile_data: Dict[str, Any]) -> Optional[str]:
+        """Create or update a user profile"""
+        try:
+            # Check if profile exists
+            existing = self.find_by_username(
+                profile_data['username'],
+                profile_data['platform'],
+                profile_data['main_user']
+            )
+            
+            if existing:
+                # Update existing profile
+                profile_id = str(existing['_id'])
+                self.update(profile_id, profile_data)
+                return profile_id
+            else:
+                # Create new profile
+                return self.create(profile_data)
+        except Exception as e:
+            logger.error(f"Error creating/updating profile: {e}")
+            return None
 
 class SummaryRepository(BaseRepository):
     """Summary repository"""
@@ -149,9 +248,16 @@ class SummaryRepository(BaseRepository):
         """Find summary by session ID"""
         return self.collection.find_one({'session_id': session_id})
     
-    def find_recent_summaries(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Find recent summaries"""
-        return self.find_all(limit=limit, sort_by='created_at')
+    def find_recent_summaries(self, main_user: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Find recent summaries for a main user"""
+        return self.find_all({'main_user': main_user}, limit=limit, sort_by='created_at')
+    
+    def find_by_participants(self, participants: List[str], main_user: str) -> List[Dict[str, Any]]:
+        """Find summaries involving specific participants"""
+        return self.find_all({
+            'participants': {'$in': participants},
+            'main_user': main_user
+        })
 
 class AudioFileRepository(BaseRepository):
     """Audio file repository"""
@@ -228,4 +334,29 @@ class CalendarEventRepository(BaseRepository):
         return self.update(event_id, {
             'google_event_id': google_event_id,
             'status': 'created'
-        }) 
+        })
+
+class PlatformIntegrationRepository(BaseRepository):
+    """Platform integration repository"""
+    
+    def __init__(self):
+        super().__init__('platform_integrations')
+    
+    def find_by_user_and_platform(self, user_id: str, platform: str) -> Optional[Dict[str, Any]]:
+        """Find integration by user ID and platform"""
+        return self.collection.find_one({
+            'user_id': user_id,
+            'platform': platform
+        })
+    
+    def find_connected_platforms(self, user_id: str) -> List[Dict[str, Any]]:
+        """Find all connected platforms for a user"""
+        return self.find_all({'user_id': user_id, 'is_connected': True})
+    
+    def update_credentials(self, integration_id: str, credentials: Dict[str, Any]) -> bool:
+        """Update platform credentials"""
+        return self.update(integration_id, {'credentials': credentials})
+    
+    def update_sync_status(self, integration_id: str, last_sync: datetime) -> bool:
+        """Update last sync timestamp"""
+        return self.update(integration_id, {'last_sync': last_sync}) 

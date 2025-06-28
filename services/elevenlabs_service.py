@@ -7,311 +7,357 @@ from datetime import datetime
 import uuid
 
 from config import Config
+#from database.repository import UserProfileRepository
 
 logger = logging.getLogger(__name__)
 
 class ElevenLabsService:
-    """Service for ElevenLabs TTS and assistant integration"""
+    """Service for ElevenLabs TTS integration with personality-based voice generation"""
     
     def __init__(self):
         self.api_key = Config.ELEVENLABS_API_KEY
-        self.base_url = Config.ELEVENLABS_BASE_URL
+        self.base_url = "https://api.elevenlabs.io/v1"
         self.headers = {
-            'xi-api-key': self.api_key,
-            'Content-Type': 'application/json'
+            "Accept": "audio/mpeg",
+            "Content-Type": "application/json",
+            "xi-api-key": self.api_key
         }
+        #self.user_profile_repo = UserProfileRepository()
     
     def get_available_voices(self) -> List[Dict[str, Any]]:
-        """
-        Get list of available voices from ElevenLabs
-        
-        Returns:
-            List of available voices
-        """
+        """Get list of available ElevenLabs voices"""
         try:
-            response = requests.get(
-                f"{self.base_url}/voices",
-                headers=self.headers
-            )
+            response = requests.get(f"{self.base_url}/voices", headers=self.headers)
             response.raise_for_status()
             
-            voices = response.json().get('voices', [])
-            return [
-                {
-                    'voice_id': voice['voice_id'],
-                    'name': voice['name'],
-                    'category': voice.get('category', 'general'),
-                    'description': voice.get('description', ''),
+            voices_data = response.json()
+            voices = []
+            
+            for voice in voices_data.get('voices', []):
+                voice_info = {
+                    'voice_id': voice.get('voice_id'),
+                    'name': voice.get('name'),
+                    'category': voice.get('category'),
+                    'description': voice.get('description'),
                     'labels': voice.get('labels', {}),
-                    'sample_url': voice.get('sample_url')
+                    'preview_url': voice.get('preview_url'),
+                    'similarity_boost': voice.get('similarity_boost'),
+                    'stability': voice.get('stability'),
+                    'style': voice.get('style'),
+                    'use_speaker_boost': voice.get('use_speaker_boost')
                 }
-                for voice in voices
-            ]
+                voices.append(voice_info)
+            
+            return voices
+            
         except Exception as e:
-            logger.error(f"Error fetching voices: {e}")
+            logger.error(f"Error getting available voices: {e}")
             return []
     
-    def generate_speech(self, text: str, voice_id: str, output_path: str) -> Dict[str, Any]:
+    def generate_batch_speech_with_profiles(self, script_lines: List[str], session_id: str, participants: List[str], main_user: str, platform: str) -> List[Dict[str, Any]]:
         """
-        Generate speech from text using ElevenLabs TTS
+        Generate TTS audio for script lines with personality-based voice settings
         
         Args:
-            text: Text to convert to speech
-            voice_id: ElevenLabs voice ID
-            output_path: Path to save the audio file
-            
-        Returns:
-            Dictionary with generation results
-        """
-        try:
-            url = f"{self.base_url}/text-to-speech/{voice_id}"
-            
-            payload = {
-                "text": text,
-                "model_id": "eleven_monolingual_v1",
-                "voice_settings": {
-                    "stability": 0.5,
-                    "similarity_boost": 0.5
-                }
-            }
-            
-            response = requests.post(
-                url,
-                headers=self.headers,
-                json=payload
-            )
-            response.raise_for_status()
-            
-            # Save the audio file
-            with open(output_path, 'wb') as f:
-                f.write(response.content)
-            
-            # Get file size
-            file_size = os.path.getsize(output_path)
-            
-            return {
-                'success': True,
-                'file_path': output_path,
-                'file_size': file_size,
-                'generation_id': str(uuid.uuid4()),
-                'duration': self._estimate_duration(text)
-            }
-        except Exception as e:
-            logger.error(f"Error generating speech: {e}")
-            return {
-                'success': False,
-                'error': str(e)
-            }
-    
-    def generate_speech_stream(self, text: str, voice_id: str) -> Optional[bytes]:
-        """
-        Generate speech and return as bytes (for streaming)
-        
-        Args:
-            text: Text to convert to speech
-            voice_id: ElevenLabs voice ID
-            
-        Returns:
-            Audio bytes or None if failed
-        """
-        try:
-            url = f"{self.base_url}/text-to-speech/{voice_id}/stream"
-            
-            payload = {
-                "text": text,
-                "model_id": "eleven_monolingual_v1",
-                "voice_settings": {
-                    "stability": 0.5,
-                    "similarity_boost": 0.5
-                }
-            }
-            
-            response = requests.post(
-                url,
-                headers=self.headers,
-                json=payload
-            )
-            response.raise_for_status()
-            
-            return response.content
-        except Exception as e:
-            logger.error(f"Error generating speech stream: {e}")
-            return None
-    
-    def generate_batch_speech(self, script_lines: List[Dict[str, Any]], session_id: str) -> List[Dict[str, Any]]:
-        """
-        Generate speech for multiple script lines
-        
-        Args:
-            script_lines: List of script line dictionaries
-            session_id: Chat session ID
+            script_lines: List of script lines to convert to speech
+            session_id: Conversation session ID
+            participants: List of participant usernames
+            main_user: Main user ID
+            platform: Platform name
             
         Returns:
             List of generation results
         """
         results = []
         
-        for line in script_lines:
-            username = line['username']
-            text = line['line']
-            line_number = line['line_number']
-            
-            # Generate filename
-            filename = f"{username.lower()}_line{line_number}.mp3"
-            output_path = os.path.join(Config.AUDIO_FOLDER, session_id, filename)
-            
-            # Ensure directory exists
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            
-            # Get voice ID for user (you might want to implement user voice mapping)
-            voice_id = self._get_voice_for_user(username)
-            
-            if voice_id:
-                result = self.generate_speech(text, voice_id, output_path)
-                result.update({
-                    'username': username,
-                    'line_number': line_number,
-                    'filename': filename
-                })
-            else:
-                result = {
+        # Create audio directory
+        audio_dir = os.path.join(Config.AUDIO_FOLDER, session_id)
+        os.makedirs(audio_dir, exist_ok=True)
+        
+        for i, line in enumerate(script_lines):
+            try:
+                # Extract speaker from line (format: "Speaker: content")
+                if ':' in line:
+                    speaker, content = line.split(':', 1)
+                    speaker = speaker.strip()
+                    content = content.strip()
+                else:
+                    speaker = participants[0] if participants else "Unknown"
+                    content = line
+                
+                # Get user profile for personality-based voice settings
+                profile = self.user_profile_repo.find_by_username(speaker, platform, main_user)
+                voice_settings = self._get_personality_based_voice_settings(profile, speaker)
+                
+                # Generate audio
+                result = self._generate_speech_with_settings(
+                    content, 
+                    speaker, 
+                    session_id, 
+                    i + 1, 
+                    voice_settings
+                )
+                
+                results.append(result)
+                
+            except Exception as e:
+                logger.error(f"Error generating speech for line {i + 1}: {e}")
+                results.append({
                     'success': False,
-                    'error': f"No voice found for user {username}",
-                    'username': username,
-                    'line_number': line_number,
-                    'filename': filename
-                }
-            
-            results.append(result)
+                    'username': speaker if 'speaker' in locals() else 'Unknown',
+                    'line_number': i + 1,
+                    'error': str(e)
+                })
         
         return results
     
-    def _get_voice_for_user(self, username: str) -> Optional[str]:
+    def generate_batch_speech(self, script_lines: List[str], session_id: str) -> List[Dict[str, Any]]:
         """
-        Get voice ID for a user (placeholder implementation)
+        Generate TTS audio for script lines (legacy method)
         
         Args:
-            username: Username
+            script_lines: List of script lines to convert to speech
+            session_id: Conversation session ID
             
         Returns:
-            Voice ID or None
+            List of generation results
         """
-        # This is a placeholder - you should implement proper user-voice mapping
-        # For now, return a default voice
-        default_voices = {
-            '21m00Tcm4TlvDq8ikWAM': 'Rachel',
-            'AZnzlk1XvdvUeBnXmlld': 'Domi',
-            'EXAVITQu4vr4xnSDxMaL': 'Bella'
+        # Use the new method with default settings
+        return self.generate_batch_speech_with_profiles(script_lines, session_id, [], 'default_user', 'unknown')
+    
+    def _get_personality_based_voice_settings(self, profile: Optional[Dict[str, Any]], speaker: str) -> Dict[str, Any]:
+        """Get voice settings based on user personality profile"""
+        default_settings = {
+            'voice_id': 'pNInz6obpgDQGcFmaJgB',  # Default voice (Adam)
+            'stability': 0.5,
+            'similarity_boost': 0.75,
+            'style': 0.0,
+            'use_speaker_boost': True
         }
         
-        # Simple hash-based assignment
-        import hashlib
-        hash_value = int(hashlib.md5(username.encode()).hexdigest(), 16)
-        voice_ids = list(default_voices.keys())
-        selected_voice = voice_ids[hash_value % len(voice_ids)]
+        if not profile:
+            return default_settings
         
-        return selected_voice
+        # Get personality traits
+        personality_traits = profile.get('personality_traits', [])
+        communication_style = profile.get('communication_style', {})
+        relationship_type = profile.get('relationship_type', 'friend')
+        trust_score = profile.get('trust_score', 0.5)
+        
+        # Adjust voice settings based on personality
+        settings = default_settings.copy()
+        
+        # Voice selection based on personality
+        if 'professional' in personality_traits:
+            settings['voice_id'] = 'pNInz6obpgDQGcFmaJgB'  # Adam - professional
+        elif 'friendly' in personality_traits or 'humorous' in personality_traits:
+            settings['voice_id'] = 'VR6AewLTigWG4xSOukaG'  # Josh - friendly
+        elif 'grateful' in personality_traits or 'apologetic' in personality_traits:
+            settings['voice_id'] = 'EXAVITQu4vr4xnSDxMaL'  # Bella - warm
+        elif 'helpful' in personality_traits:
+            settings['voice_id'] = '21m00Tcm4TlvDq8ikWAM'  # Rachel - helpful
+        
+        # Adjust stability based on communication style
+        if communication_style.get('exclamation_heavy'):
+            settings['stability'] = 0.3  # More expressive
+        elif communication_style.get('formal'):
+            settings['stability'] = 0.7  # More stable
+        
+        # Adjust similarity boost based on relationship
+        if relationship_type == 'family':
+            settings['similarity_boost'] = 0.9  # Higher similarity for family
+        elif relationship_type == 'colleague':
+            settings['similarity_boost'] = 0.6  # Lower similarity for colleagues
+        
+        # Adjust style based on emoji usage
+        if communication_style.get('emoji_heavy'):
+            settings['style'] = 0.3  # More expressive style
+        
+        # Use existing voice_id if available
+        if profile.get('voice_id'):
+            settings['voice_id'] = profile['voice_id']
+        
+        return settings
     
-    def _estimate_duration(self, text: str) -> float:
-        """
-        Estimate audio duration based on text length
-        
-        Args:
-            text: Text content
+    def _generate_speech_with_settings(self, text: str, speaker: str, session_id: str, line_number: int, voice_settings: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate speech with specific voice settings"""
+        try:
+            # Prepare request payload
+            payload = {
+                "text": text,
+                "model_id": "eleven_monolingual_v1",
+                "voice_settings": {
+                    "stability": voice_settings.get('stability', 0.5),
+                    "similarity_boost": voice_settings.get('similarity_boost', 0.75),
+                    "style": voice_settings.get('style', 0.0),
+                    "use_speaker_boost": voice_settings.get('use_speaker_boost', True)
+                }
+            }
             
-        Returns:
-            Estimated duration in seconds
-        """
-        # Rough estimate: 150 words per minute
-        word_count = len(text.split())
-        return (word_count / 150) * 60
+            # Make API request
+            voice_id = voice_settings.get('voice_id', 'JBFqnCBsd6RMkjVDRZzb')
+            response = requests.post(
+                f"{self.base_url}/text-to-speech/{voice_id}",
+                headers=self.headers,
+                json=payload
+            )
+            response.raise_for_status()
+            
+            # Save audio file
+            filename = f"{speaker}_{line_number:03d}.mp3"
+            file_path = os.path.join(Config.AUDIO_FOLDER, session_id, filename)
+            
+            with open(file_path, 'wb') as f:
+                f.write(response.content)
+            
+            # Get file size
+            file_size = os.path.getsize(file_path)
+            
+            # Extract generation ID from response headers if available
+            generation_id = response.headers.get('xi-generation-id', str(uuid.uuid4()))
+            
+            return {
+                'success': True,
+                'username': speaker,
+                'line_number': line_number,
+                'filename': filename,
+                'file_path': file_path,
+                'voice_id': voice_id,
+                'file_size': file_size,
+                'generation_id': generation_id,
+                'voice_settings': voice_settings,
+                'emotion_context': self._extract_emotion_context(text, voice_settings)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error generating speech: {e}")
+            return {
+                'success': False,
+                'username': speaker,
+                'line_number': line_number,
+                'error': str(e)
+            }
     
-    def create_voice(self, name: str, description: str, files: List[str]) -> Optional[str]:
+    def _extract_emotion_context(self, text: str, voice_settings: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract emotional context from text for voice generation"""
+        text_lower = text.lower()
+        
+        emotion_context = {
+            'detected_emotions': [],
+            'intensity': 'medium',
+            'tone': 'neutral'
+        }
+        
+        # Detect emotions from text
+        if any(word in text_lower for word in ['happy', 'excited', 'great', 'awesome', 'amazing']):
+            emotion_context['detected_emotions'].append('joy')
+            emotion_context['tone'] = 'positive'
+        elif any(word in text_lower for word in ['sad', 'sorry', 'unfortunate', 'disappointed']):
+            emotion_context['detected_emotions'].append('sadness')
+            emotion_context['tone'] = 'negative'
+        elif any(word in text_lower for word in ['urgent', 'important', 'critical', 'emergency']):
+            emotion_context['detected_emotions'].append('urgency')
+            emotion_context['intensity'] = 'high'
+        elif any(word in text_lower for word in ['calm', 'relaxed', 'peaceful', 'gentle']):
+            emotion_context['detected_emotions'].append('calmness')
+            emotion_context['intensity'] = 'low'
+        
+        # Adjust voice settings based on emotions
+        if 'joy' in emotion_context['detected_emotions']:
+            voice_settings['stability'] = min(voice_settings.get('stability', 0.5) - 0.1, 0.3)
+        elif 'urgency' in emotion_context['detected_emotions']:
+            voice_settings['stability'] = min(voice_settings.get('stability', 0.5) - 0.2, 0.2)
+        
+        return emotion_context
+    
+    def clone_voice(self, name: str, description: str, files: List[str]) -> Optional[str]:
         """
-        Create a custom voice using ElevenLabs
+        Clone a voice using audio samples
         
         Args:
             name: Voice name
             description: Voice description
-            files: List of audio file paths for training
+            files: List of audio file paths
             
         Returns:
             Voice ID if successful, None otherwise
         """
         try:
-            url = f"{self.base_url}/voices/add"
-            
             # Prepare files for upload
             files_data = []
             for file_path in files:
-                with open(file_path, 'rb') as f:
-                    files_data.append(('files', f))
+                if os.path.exists(file_path):
+                    with open(file_path, 'rb') as f:
+                        files_data.append(('files', f))
             
+            if not files_data:
+                return None
+            
+            # Prepare form data
             data = {
                 'name': name,
                 'description': description
             }
             
+            # Make API request
             response = requests.post(
-                url,
-                headers={'xi-api-key': self.api_key},
+                f"{self.base_url}/voices/add",
+                headers={"xi-api-key": self.api_key},
                 data=data,
                 files=files_data
             )
             response.raise_for_status()
             
-            result = response.json()
-            return result.get('voice_id')
+            voice_data = response.json()
+            return voice_data.get('voice_id')
+            
         except Exception as e:
-            logger.error(f"Error creating voice: {e}")
+            logger.error(f"Error cloning voice: {e}")
             return None
     
     def delete_voice(self, voice_id: str) -> bool:
         """
-        Delete a custom voice
+        Delete a cloned voice
         
         Args:
             voice_id: Voice ID to delete
             
         Returns:
-            True if successful
+            True if successful, False otherwise
         """
         try:
-            url = f"{self.base_url}/voices/{voice_id}"
-            
             response = requests.delete(
-                url,
+                f"{self.base_url}/voices/{voice_id}",
                 headers=self.headers
             )
             response.raise_for_status()
-            
             return True
+            
         except Exception as e:
             logger.error(f"Error deleting voice: {e}")
             return False
     
-    def get_voice_settings(self, voice_id: str) -> Optional[Dict[str, Any]]:
+    def get_voice_info(self, voice_id: str) -> Optional[Dict[str, Any]]:
         """
-        Get voice settings
+        Get information about a specific voice
         
         Args:
             voice_id: Voice ID
             
         Returns:
-            Voice settings dictionary
+            Voice information dictionary
         """
         try:
-            url = f"{self.base_url}/voices/{voice_id}/settings/edit"
-            
             response = requests.get(
-                url,
+                f"{self.base_url}/voices/{voice_id}",
                 headers=self.headers
             )
             response.raise_for_status()
             
             return response.json()
+            
         except Exception as e:
-            logger.error(f"Error getting voice settings: {e}")
+            logger.error(f"Error getting voice info: {e}")
             return None
     
     def update_voice_settings(self, voice_id: str, settings: Dict[str, Any]) -> bool:
@@ -320,43 +366,100 @@ class ElevenLabsService:
         
         Args:
             voice_id: Voice ID
-            settings: Settings dictionary
+            settings: New voice settings
             
         Returns:
-            True if successful
+            True if successful, False otherwise
         """
         try:
-            url = f"{self.base_url}/voices/{voice_id}/settings/edit"
-            
             response = requests.post(
-                url,
+                f"{self.base_url}/voices/{voice_id}/settings/edit",
                 headers=self.headers,
                 json=settings
             )
             response.raise_for_status()
-            
             return True
+            
         except Exception as e:
             logger.error(f"Error updating voice settings: {e}")
             return False
     
-    def get_usage_info(self) -> Optional[Dict[str, Any]]:
+    def assign_voice_to_user(self, user_id: str, voice_id: str, voice_name: str) -> bool:
         """
-        Get API usage information
+        Assign a voice to a user profile
         
+        Args:
+            user_id: User profile ID
+            voice_id: ElevenLabs voice ID
+            voice_name: Voice name
+            
         Returns:
-            Usage information dictionary
+            True if successful, False otherwise
         """
         try:
-            url = f"{self.base_url}/user/subscription"
+            # Update user profile with voice information
+            update_data = {
+                'voice_id': voice_id,
+                'voice_name': voice_name
+            }
             
-            response = requests.get(
-                url,
-                headers=self.headers
-            )
-            response.raise_for_status()
+            success = self.user_profile_repo.update(user_id, update_data)
+            return success
             
-            return response.json()
         except Exception as e:
-            logger.error(f"Error getting usage info: {e}")
-            return None 
+            logger.error(f"Error assigning voice to user: {e}")
+            return False
+    
+    def get_user_voice_preferences(self, main_user: str, platform: str = None) -> Dict[str, Any]:
+        """
+        Get voice preferences for all users of a main user
+        
+        Args:
+            main_user: Main user ID
+            platform: Platform filter (optional)
+            
+        Returns:
+            Dictionary of user voice preferences
+        """
+        try:
+            profiles = self.user_profile_repo.find_by_main_user(main_user, platform)
+            
+            voice_preferences = {}
+            for profile in profiles:
+                username = profile.get('username')
+                if username:
+                    voice_preferences[username] = {
+                        'voice_id': profile.get('voice_id'),
+                        'voice_name': profile.get('voice_name'),
+                        'personality_traits': profile.get('personality_traits', []),
+                        'communication_style': profile.get('communication_style', {})
+                    }
+            
+            return voice_preferences
+            
+        except Exception as e:
+            logger.error(f"Error getting user voice preferences: {e}")
+            return {}
+
+
+""""        
+from dotenv import load_dotenv
+from elevenlabs.client import ElevenLabs
+from elevenlabs import play
+
+load_dotenv()
+
+elevenlabs = ElevenLabs(
+  api_key=os.getenv("ELEVENLABS_API_KEY"),
+)
+
+audio = elevenlabs.text_to_speech.convert(
+    text="The first move is what sets everything in motion.",
+    voice_id="JBFqnCBsd6RMkjVDRZzb",
+    model_id="eleven_multilingual_v2",
+    output_format="mp3_44100_128",
+)
+
+play(audio)
+
+"""
