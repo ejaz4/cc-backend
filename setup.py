@@ -9,15 +9,7 @@ from pathlib import Path
 
 def print_banner():
     """Print setup banner"""
-    print("""
-╔══════════════════════════════════════════════════════════════╗
-║                                                              ║
-║    Multi-Platform Conversation Summarizer API Setup         ║
-║                                                              ║
-║    🚀 Migrated to Supabase PostgreSQL                       ║
-║                                                              ║
-╚══════════════════════════════════════════════════════════════╝
-    """)
+    pass
 
 def check_python_version():
     """Check if Python version is compatible"""
