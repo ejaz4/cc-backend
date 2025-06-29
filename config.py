@@ -7,22 +7,23 @@ load_dotenv()
 class Config:
     """Configuration class for the application"""
     
-    # Flask Configuration
-    SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key')
-    DEBUG = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
+    # FastAPI Configuration
+    DEBUG = os.getenv('FASTAPI_DEBUG', 'False').lower() == 'true'
+    HOST = os.getenv('FASTAPI_HOST', '0.0.0.0')
+    PORT = int(os.getenv('FASTAPI_PORT', 8000))
     
     # Database Configuration (Supabase PostgreSQL)
-    SUPABASE_URL = os.getenv('SUPABASE_URL')
-    SUPABASE_KEY = os.getenv('SUPABASE_KEY')
+    SUPABASE_URI = os.getenv('SUPABASE_URI')
+    SUPABASE_API_KEY = os.getenv('SUPABASE_API_KEY')
     DATABASE_URL = os.getenv('DATABASE_URL')  # Direct PostgreSQL connection string
     
     # If DATABASE_URL is not provided, construct it from Supabase credentials
-    if not DATABASE_URL and SUPABASE_URL and SUPABASE_KEY:
+    if not DATABASE_URL and SUPABASE_URI and SUPABASE_API_KEY:
         # Extract host from Supabase URL and construct PostgreSQL connection
         # Supabase URL format: https://project-ref.supabase.co
         # PostgreSQL connection: postgresql://postgres:[password]@[host]:5432/postgres
-        host = SUPABASE_URL.replace('https://', '').replace('.supabase.co', '')
-        DATABASE_URL = f"postgresql://postgres:{SUPABASE_KEY}@{host}.supabase.co:5432/postgres"
+        host = SUPABASE_URI.replace('https://', '').replace('.supabase.co', '')
+        DATABASE_URL = f"postgresql://postgres:{SUPABASE_API_KEY}@{host}.supabase.co:5432/postgres"
     
     # API Keys
     ELEVENLABS_API_KEY = os.getenv('ELEVENLABS_API_KEY')
@@ -31,7 +32,7 @@ class Config:
     # Google Calendar Configuration (Optional)
     GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
     GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
-    GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:5000/api/assistant/calendar/callback')
+    GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:8000/api/assistant/calendar/callback')
     
     # File Storage Configuration
     UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', 'uploads')
@@ -43,11 +44,28 @@ class Config:
     # ElevenLabs Configuration
     ELEVENLABS_BASE_URL = os.getenv('ELEVENLABS_BASE_URL', 'https://api.elevenlabs.io/v1')
     
+    # CORS Configuration
+    CORS_ORIGINS = os.getenv('CORS_ORIGINS', '*').split(',')
+    CORS_ALLOW_CREDENTIALS = os.getenv('CORS_ALLOW_CREDENTIALS', 'true').lower() == 'true'
+    CORS_ALLOW_METHODS = os.getenv('CORS_ALLOW_METHODS', '*').split(',')
+    CORS_ALLOW_HEADERS = os.getenv('CORS_ALLOW_HEADERS', '*').split(',')
+    
+    # Security Configuration
+    SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
+    ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
+    
+    # Rate Limiting
+    RATE_LIMIT_PER_MINUTE = int(os.getenv('RATE_LIMIT_PER_MINUTE', 60))
+    
+    # File Upload Limits
+    MAX_FILE_SIZE = int(os.getenv('MAX_FILE_SIZE', 16 * 1024 * 1024))  # 16MB default
+    
     @classmethod
     def validate_config(cls):
         """Validate required configuration"""
         required_vars = [
-            'DATABASE_URL',
+            'SUPABASE_URI',
+            'SUPABASE_API_KEY',
             'ELEVENLABS_API_KEY',
             'OPENAI_API_KEY'
         ]
@@ -65,15 +83,20 @@ class Config:
 class DevelopmentConfig(Config):
     """Development configuration"""
     DEBUG = True
+    CORS_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000', '*']
 
 class ProductionConfig(Config):
     """Production configuration"""
     DEBUG = False
+    CORS_ORIGINS = os.getenv('CORS_ORIGINS', '').split(',') if os.getenv('CORS_ORIGINS') else []
+    ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',') if os.getenv('ALLOWED_HOSTS') else []
 
 class TestingConfig(Config):
     """Testing configuration"""
+    DEBUG = True
     TESTING = True
-    DATABASE_URL = 'test_whatsapp_summarizer'
+    SUPABASE_URI = 'test_SUPABASE_URI'
+    SUPABASE_API_KEY = 'test_SUPABASE_API_KEY'
 
 # Configuration dictionary
 config = {

@@ -1,12 +1,14 @@
 """
-Database migration utilities for MongoDB to Supabase transition
+Database migration utilities for Supabase.
+Handles sample data creation using Supabase SDK.
 """
+
 import logging
 import json
 from datetime import datetime
 from typing import Dict, Any, List
 
-from .connection import init_database, create_tables
+from .connection import init_database, get_current_timestamp
 from .repository import (
     ConversationSessionRepository, MainUserRepository, SummaryRepository,
     AudioFileRepository, AssistantSessionRepository, CalendarEventRepository,
@@ -16,7 +18,7 @@ from .repository import (
 logger = logging.getLogger(__name__)
 
 class DatabaseMigrator:
-    """Handles database migration and setup"""
+    """Handles database migration and setup for Supabase"""
     
     def __init__(self):
         self.conversation_repo = ConversationSessionRepository()
@@ -29,22 +31,19 @@ class DatabaseMigrator:
         self.platform_integration_repo = PlatformIntegrationRepository()
     
     def setup_database(self):
-        """Initialize database and create tables"""
+        """Initialize Supabase connection"""
         try:
-            logger.info("Initializing database...")
+            logger.info("Initializing Supabase connection...")
             init_database()
             
-            logger.info("Creating tables...")
-            create_tables()
-            
-            logger.info("Database setup completed successfully")
+            logger.info("Supabase connection established successfully")
             return True
         except Exception as e:
             logger.error(f"Database setup failed: {e}")
             return False
     
     def create_sample_data(self):
-        """Create sample data for testing"""
+        """Create sample data for testing using Supabase SDK"""
         try:
             logger.info("Creating sample data...")
             
@@ -157,7 +156,7 @@ class DatabaseMigrator:
                         'conversation_session_id': session_id,
                         'username': 'mom',
                         'content': 'Hey everyone! How\'s your day going? 😊',
-                        'timestamp': datetime(2024, 1, 15, 10, 30, 0),
+                        'timestamp': '2024-01-15T10:30:00Z',
                         'message_type': 'text',
                         'is_important': False,
                         'platform_specific_data': {
@@ -171,7 +170,7 @@ class DatabaseMigrator:
                         'conversation_session_id': session_id,
                         'username': 'test_user',
                         'content': 'Pretty good! Just finished my project. How about you?',
-                        'timestamp': datetime(2024, 1, 15, 10, 32, 0),
+                        'timestamp': '2024-01-15T10:32:00Z',
                         'message_type': 'text',
                         'is_important': False,
                         'platform_specific_data': {
@@ -183,13 +182,13 @@ class DatabaseMigrator:
                     }
                 ]
                 
-                for message_data in sample_messages:
-                    self.conversation_repo.add_message(
-                        self.conversation_repo.find_by_id(session_id)['session_id'],
-                        message_data
-                    )
-                
-                logger.info("Added sample messages to conversation")
+                # Get the session to add messages
+                session = self.conversation_repo.find_by_id(session_id)
+                if session:
+                    for message_data in sample_messages:
+                        self.conversation_repo.add_message(session['session_id'], message_data)
+                    
+                    logger.info("Added sample messages to conversation")
             
             logger.info("Sample data creation completed successfully")
             return True
@@ -198,67 +197,43 @@ class DatabaseMigrator:
             logger.error(f"Sample data creation failed: {e}")
             return False
     
-    def validate_database(self):
-        """Validate database connection and structure"""
-        try:
-            logger.info("Validating database...")
-            
-            # Test basic operations
-            test_user = self.main_user_repo.find_by_username('test_user')
-            if test_user:
-                logger.info("✓ Database validation successful")
-                return True
-            else:
-                logger.warning("No test user found - database may be empty")
-                return True
-                
-        except Exception as e:
-            logger.error(f"Database validation failed: {e}")
-            return False
-    
     def cleanup_test_data(self):
-        """Clean up test data"""
+        """Clean up test data from database"""
         try:
             logger.info("Cleaning up test data...")
             
-            # Find and delete test user
+            # Delete test user and all related data
             test_user = self.main_user_repo.find_by_username('test_user')
             if test_user:
-                self.main_user_repo.delete(test_user['id'])
-                logger.info("Cleaned up test user")
+                user_id = test_user['id']
+                
+                # Delete related data first (foreign key constraints)
+                # This would need to be done in the correct order based on your schema
+                # For now, we'll just delete the main user and let Supabase handle cascading
+                self.main_user_repo.delete(user_id)
+                logger.info("Cleaned up test data successfully")
             
-            logger.info("Test data cleanup completed")
             return True
-            
         except Exception as e:
-            logger.error(f"Test data cleanup failed: {e}")
+            logger.error(f"Cleanup failed: {e}")
             return False
 
 def run_migration():
-    """Run the complete migration process"""
+    """Run the database migration"""
     migrator = DatabaseMigrator()
     
-    print("🚀 Starting database migration...")
-    
-    # Setup database
+    # Setup database connection
     if not migrator.setup_database():
-        print("❌ Database setup failed")
+        logger.error("Failed to setup database")
         return False
     
-    # Validate database
-    if not migrator.validate_database():
-        print("❌ Database validation failed")
+    # Create sample data
+    if not migrator.create_sample_data():
+        logger.error("Failed to create sample data")
         return False
     
-    # Create sample data (optional)
-    create_samples = input("Create sample data? (y/n): ").lower().strip()
-    if create_samples == 'y':
-        if not migrator.create_sample_data():
-            print("❌ Sample data creation failed")
-            return False
-    
-    print("✅ Database migration completed successfully!")
+    logger.info("Migration completed successfully")
     return True
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     run_migration() 

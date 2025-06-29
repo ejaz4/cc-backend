@@ -1,21 +1,29 @@
+#!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.13"
+# dependencies = []
+# ///
+"""
+Main entry point for the FastAPI application
+"""
+
 import os
+import sys
 import logging
-from flask import Flask
-from dotenv import load_dotenv
+from pathlib import Path
 
+# Add the project root to the Python path
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
+
+from app import app
 from config import Config
-from database.connection import init_database, create_tables, check_connection
-from api.routes import create_app
-
-# Load environment variables
-load_dotenv()
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-
 logger = logging.getLogger(__name__)
 
 def main():
@@ -25,39 +33,30 @@ def main():
         Config.validate_config()
         logger.info("Configuration validated successfully")
         
-        # Initialize database
-        init_database()
-        logger.info("Database initialized successfully")
-        
-        # Create tables if they don't exist
-        create_tables()
-        logger.info("Database tables created/verified successfully")
-        
-        # Test database connection
-        if check_connection():
-            logger.info("Database connection test successful")
-        else:
-            logger.error("Database connection test failed")
-            return
-        
-        # Create Flask app
-        app = create_app()
-        
-        # Create necessary directories
-        os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
-        os.makedirs(Config.AUDIO_FOLDER, exist_ok=True)
-        
-        # Run the application
-        host = os.getenv('FLASK_HOST', '0.0.0.0')
-        port = int(os.getenv('FLASK_PORT', 5000))
+        # Get configuration
+        host = Config.HOST
+        port = Config.PORT
         debug = Config.DEBUG
         
-        logger.info(f"Starting application on {host}:{port}")
-        app.run(host=host, port=port, debug=debug)
+        logger.info(f"Starting FastAPI application on {host}:{port}")
+        logger.info(f"Debug mode: {debug}")
+        logger.info(f"API documentation available at: http://{host}:{port}/docs")
+        
+        # Import uvicorn here to avoid issues with multiprocessing
+        import uvicorn
+        
+        # Run the application
+        uvicorn.run(
+            "app:app",
+            host=host,
+            port=port,
+            reload=debug,
+            log_level="info" if not debug else "debug"
+        )
         
     except Exception as e:
         logger.error(f"Failed to start application: {e}")
-        raise
+        sys.exit(1)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main() 

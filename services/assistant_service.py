@@ -3,12 +3,20 @@ import requests
 import json
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
-from googleapiclient.discovery import build
 import pickle
 import os
+
+# Optional Google Calendar imports
+try:
+    from google.oauth2.credentials import Credentials
+    from google_auth_oauthlib.flow import InstalledAppFlow
+    from google.auth.transport.requests import Request
+    from googleapiclient.discovery import build
+    GOOGLE_CALENDAR_AVAILABLE = True
+except ImportError:
+    GOOGLE_CALENDAR_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("Google Calendar dependencies not available. Calendar features will be disabled.")
 
 from config import Config
 
@@ -147,6 +155,12 @@ Just let me know what you need help with!"""
         Returns:
             Creation result
         """
+        if not GOOGLE_CALENDAR_AVAILABLE:
+            return {
+                'success': False,
+                'error': 'Google Calendar integration is not available. Please install google-auth-oauthlib and google-api-python-client packages.'
+            }
+        
         try:
             # Get Google Calendar service
             service = self._get_calendar_service(user_id)
@@ -208,6 +222,12 @@ Just let me know what you need help with!"""
         Returns:
             List of upcoming events
         """
+        if not GOOGLE_CALENDAR_AVAILABLE:
+            return {
+                'success': False,
+                'error': 'Google Calendar integration is not available. Please install google-auth-oauthlib and google-api-python-client packages.'
+            }
+        
         try:
             service = self._get_calendar_service(user_id)
             if not service:
@@ -266,6 +286,12 @@ Just let me know what you need help with!"""
         Returns:
             Deletion result
         """
+        if not GOOGLE_CALENDAR_AVAILABLE:
+            return {
+                'success': False,
+                'error': 'Google Calendar integration is not available. Please install google-auth-oauthlib and google-api-python-client packages.'
+            }
+        
         try:
             service = self._get_calendar_service(user_id)
             if not service:
@@ -300,6 +326,9 @@ Just let me know what you need help with!"""
         Returns:
             Google Calendar service or None
         """
+        if not GOOGLE_CALENDAR_AVAILABLE:
+            return None
+        
         try:
             # Check if credentials exist for user
             creds = None
@@ -333,6 +362,10 @@ Just let me know what you need help with!"""
         Returns:
             Authorization URL
         """
+        if not GOOGLE_CALENDAR_AVAILABLE:
+            logger.error("Google Calendar integration is not available")
+            return ""
+        
         try:
             flow = InstalledAppFlow.from_client_config(
                 {
@@ -369,6 +402,10 @@ Just let me know what you need help with!"""
         Returns:
             True if successful
         """
+        if not GOOGLE_CALENDAR_AVAILABLE:
+            logger.error("Google Calendar integration is not available")
+            return False
+        
         try:
             # Load flow
             flow_path = f'tokens/{user_id}_flow.pickle'

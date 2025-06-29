@@ -1,6 +1,6 @@
 # Multi-Platform Conversation Summarizer API
 
-A comprehensive Flask REST API backend for a Gen-Z-focused Android app that summarizes conversations from multiple platforms (WhatsApp, Instagram, Discord) and generates short voice message summaries using ElevenLabs TTS. The backend also integrates with ElevenLabs' conversational assistant and Google Calendar for event management.
+A comprehensive **FastAPI** REST API backend for a Gen-Z-focused Android app that summarizes conversations from multiple platforms (WhatsApp, Instagram, Discord) and generates short voice message summaries using ElevenLabs TTS. The backend also integrates with ElevenLabs' conversational assistant and Google Calendar for event management.
 
 ## 🌟 Features
 
@@ -35,7 +35,34 @@ A comprehensive Flask REST API backend for a Gen-Z-focused Android app that summ
 - **User Context**: Assistant uses conversation history and user profiles
 - **Multi-Platform Context**: Access to conversations across all platforms
 
+### Modern FastAPI Features
+- **Automatic API Documentation**: Interactive Swagger UI at `/docs`
+- **Type Safety**: Full type hints and Pydantic validation
+- **Async Support**: High-performance async/await operations
+- **Dependency Injection**: Clean service and repository injection
+- **OpenAPI 3.0**: Standard API specification
+
 ## 🏗️ Architecture
+
+### FastAPI Application Structure
+```
+cc-backend/
+├── app.py                          # Main FastAPI application
+├── main.py                         # Application entry point
+├── config.py                       # Configuration management
+├── api/
+│   ├── models.py                   # Pydantic models for validation
+│   ├── dependencies.py             # Dependency injection
+│   └── routers/                    # Modular route organization
+│       ├── conversations.py        # Conversation endpoints
+│       ├── users.py               # User profile endpoints
+│       ├── assistant.py           # AI assistant endpoints
+│       ├── audio.py               # Audio file endpoints
+│       └── voices.py              # ElevenLabs voice endpoints
+├── database/                       # Supabase integration
+├── services/                       # Business logic
+└── requirements.txt               # Dependencies
+```
 
 ### Database Models (PostgreSQL/Supabase)
 
@@ -116,18 +143,15 @@ pip install -r requirements.txt
 
 4. **Set up environment variables**
 ```bash
-cp env.example .env
+cp env.example .envpip uninstall Flask Flask-CORS Flask-RESTful
+pip install fastapi uvicorn[standard] python-multipart httpx pydantic-settings
 ```
 
 Edit `.env` with your configuration:
 ```env
 # Database Configuration (Supabase PostgreSQL)
-# Option 1: Direct PostgreSQL connection string
-DATABASE_URL=postgresql://postgres:[password]@[host]:5432/postgres
-
-# Option 2: Supabase credentials (will auto-generate DATABASE_URL)
-SUPABASE_URL=https://your-project-ref.supabase.co
-SUPABASE_KEY=your-supabase-anon-key
+SUPABASE_URI=https://your-project-ref.supabase.co
+SUPABASE_API_KEY=your-supabase-anon-key
 
 # API Keys (Required)
 ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
@@ -136,25 +160,43 @@ OPENAI_API_KEY=your_openai_api_key_here
 # Google Calendar (optional)
 GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
-GOOGLE_REDIRECT_URI=http://localhost:5000/api/assistant/calendar/callback
+GOOGLE_REDIRECT_URI=http://localhost:8000/api/assistant/calendar/callback
 
 # File Storage
 UPLOAD_FOLDER=uploads
 AUDIO_FOLDER=audio
 
-# Flask Configuration
-FLASK_HOST=0.0.0.0
-FLASK_PORT=5000
-FLASK_DEBUG=False
+# FastAPI Configuration
+FASTAPI_DEBUG=true
+FASTAPI_HOST=0.0.0.0
+FASTAPI_PORT=8000
 SECRET_KEY=your-secret-key-here
+
+# CORS Configuration
+CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+CORS_ALLOW_CREDENTIALS=true
 ```
 
-5. **Run the application**
+5. **Test the migration**
 ```bash
-python main.py
+python test_fastapi_migration.py
 ```
 
-The API will be available at `http://localhost:5000`
+6. **Run the application**
+```bash
+# Development
+python main.py
+
+# Or directly with uvicorn
+uvicorn app:app --reload --host 0.0.0.0 --port 8000
+```
+
+The API will be available at `http://localhost:8000`
+
+### API Documentation
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+- **Health Check**: http://localhost:8000/api/health
 
 ## 📡 API Endpoints
 
@@ -194,28 +236,34 @@ group_name: Family Group
 #### Generate Summary
 ```http
 POST /api/conversations/{session_id}/summarize
+Content-Type: application/json
+
+{
+  "include_personality": true,
+  "include_relationships": true,
+  "summary_length": "medium"
+}
 ```
 
 #### Generate Audio
 ```http
 POST /api/conversations/{session_id}/generate-audio
-```
+Content-Type: application/json
 
-#### Get Conversation Details
-```http
-GET /api/conversations/{session_id}
-```
-
-#### List Conversations
-```http
-GET /api/conversations?main_user=john_doe&platform=whatsapp&limit=10
+{
+  "voice_settings": {
+    "stability": 0.5,
+    "similarity_boost": 0.75
+  },
+  "include_emotions": true
+}
 ```
 
 ### User Profile Management
 
 #### Get User Profiles
 ```http
-GET /api/users/profiles?main_user=john_doe&platform=whatsapp&relationship_type=family
+GET /api/users/profiles?page=1&per_page=10&platform=whatsapp
 ```
 
 #### Update User Profile
@@ -224,15 +272,24 @@ PUT /api/users/profiles/{profile_id}
 Content-Type: application/json
 
 {
-  "personality_traits": ["friendly", "helpful"],
-  "interests": ["technology", "music"],
-  "voice_id": "pNInz6obpgDQGcFmaJgB"
+  "display_name": "Mom",
+  "voice_id": "voice_id_here",
+  "personality_traits": ["caring", "organized"],
+  "relationship_type": "family",
+  "trust_score": 0.9
 }
 ```
 
-#### Get Frequent Contacts
+### Audio Management
+
+#### Get Session Audio Files
 ```http
-GET /api/users/profiles/frequent?main_user=john_doe&limit=10
+GET /api/audio/{session_id}
+```
+
+#### Serve Audio File
+```http
+GET /api/audio/{session_id}/{filename}
 ```
 
 ### Assistant Integration
@@ -243,19 +300,9 @@ POST /api/assistant/chat
 Content-Type: application/json
 
 {
-  "message": "What meetings do I have today?",
-  "user_id": "john_doe",
-  "session_id": "optional_session_id"
-}
-```
-
-#### Calendar Authentication
-```http
-POST /api/assistant/calendar/auth
-Content-Type: application/json
-
-{
-  "user_id": "john_doe"
+  "message": "What did my family talk about yesterday?",
+  "include_calendar": true,
+  "include_user_profiles": true
 }
 ```
 
@@ -265,194 +312,108 @@ POST /api/assistant/calendar/events
 Content-Type: application/json
 
 {
-  "user_id": "john_doe",
-  "event_data": {
-    "title": "Team Meeting",
-    "start_time": "2024-01-15T14:00:00Z",
-    "end_time": "2024-01-15T15:00:00Z",
-    "description": "Weekly team sync"
-  }
+  "main_user_id": 1,
+  "title": "Family Dinner",
+  "start_time": "2024-01-20T18:00:00Z",
+  "end_time": "2024-01-20T20:00:00Z",
+  "description": "Weekly family dinner",
+  "location": "Home"
 }
 ```
 
-### Audio Management
-
-#### Serve Audio File
-```http
-GET /api/audio/{session_id}/{filename}
-```
+### Voice Management
 
 #### Get Available Voices
 ```http
-GET /api/voices
+GET /api/voices/
 ```
 
-## 🔧 Platform Integration Examples
+## 🧪 Testing
 
-### Instagram Integration
-```json
-{
-  "platform": "instagram",
-  "main_user": "john_doe",
-  "group_name": "Close Friends",
-  "conversation_type": "group",
-  "messages": [
-    {
-      "username": "sarah",
-      "content": "Just posted a new photo! 📸",
-      "timestamp": "2024-01-15T10:30:00Z",
-      "type": "text",
-      "reactions": ["❤️", "🔥"],
-      "reply_to": null
-    }
-  ],
-  "platform_specific_data": {
-    "instagram_data": {
-      "is_dm": false,
-      "has_media": false
-    }
-  }
-}
+### Run Migration Tests
+```bash
+python test_fastapi_migration.py
 ```
 
-### Discord Integration
-```json
-{
-  "platform": "discord",
-  "main_user": "john_doe",
-  "group_name": "Gaming Server",
-  "conversation_type": "channel",
-  "messages": [
-    {
-      "username": "gamer123",
-      "content": "Anyone up for a game tonight?",
-      "timestamp": "2024-01-15T10:30:00Z",
-      "type": "text",
-      "reactions": ["👍"],
-      "reply_to": null
-    }
-  ],
-  "platform_specific_data": {
-    "discord_data": {
-      "channel_id": "123456789",
-      "guild_id": "987654321",
-      "is_bot": false,
-      "attachments": []
-    }
-  }
-}
+### Run Database Tests
+```bash
+python test_supabase_integration.py
 ```
 
-## 🧠 Personality Analysis Features
+### API Testing with curl
+```bash
+# Health check
+curl http://localhost:8000/api/health
 
-### Automatic Trait Detection
-- **Humorous**: Detects use of emojis, jokes, and playful language
-- **Professional**: Identifies work-related vocabulary and formal language
-- **Grateful**: Recognizes thank you messages and appreciation
-- **Helpful**: Detects offers of assistance and support
-- **Apologetic**: Identifies apologies and regretful language
+# List conversations
+curl http://localhost:8000/api/conversations/
 
-### Communication Style Analysis
-- **Emoji Usage**: Tracks frequency and types of emojis
-- **Formality Level**: Analyzes language formality
-- **Question Patterns**: Identifies question-heavy communication
-- **Exclamation Usage**: Tracks enthusiasm and emphasis
-- **Response Patterns**: Analyzes reply timing and engagement
-
-### Relationship Context
-- **Family**: Detects family-related vocabulary and dynamics
-- **Friends**: Identifies casual, friendly interactions
-- **Colleagues**: Recognizes work-related conversations
-- **Close Friends**: Detects intimate, personal discussions
-
-## 🎵 Voice Generation Features
-
-### Personality-Based Voice Selection
-- **Professional**: Adam voice for business-like communication
-- **Friendly**: Josh voice for warm, casual interactions
-- **Warm**: Bella voice for caring, supportive messages
-- **Helpful**: Rachel voice for assistance and guidance
-
-### Emotion-Aware Settings
-- **Joy**: Lower stability for more expressive delivery
-- **Urgency**: Reduced stability for urgent messages
-- **Calmness**: Higher stability for peaceful content
-- **Sadness**: Adjusted tone for empathetic delivery
-
-### Custom Voice Settings
-- **Stability**: Controls voice consistency (0.0-1.0)
-- **Similarity Boost**: Enhances voice similarity (0.0-1.0)
-- **Style**: Adjusts expressiveness (0.0-1.0)
-- **Speaker Boost**: Enhances speaker clarity
-
-## 🔒 Security & Privacy
-
-### Data Protection
-- Encrypted platform credentials
-- Secure API key storage
-- User data isolation
-- Privacy settings per user
-
-### Access Control
-- User-specific data access
-- Platform-specific permissions
-- Relationship-based data sharing
-- Audit logging
+# Upload conversation
+curl -X POST "http://localhost:8000/api/conversations/upload" \
+  -H "Content-Type: application/json" \
+  -d '{"platform": "whatsapp", "group_name": "Test Group", "main_user": "test_user", "messages": []}'
+```
 
 ## 🚀 Deployment
 
-### Supabase Setup
-1. **Create Supabase Project**
-   - Go to [supabase.com](https://supabase.com)
-   - Create a new project
-   - Note your project URL and anon key
-
-2. **Configure Environment**
-```env
-SUPABASE_URL=https://your-project-ref.supabase.co
-SUPABASE_KEY=your-supabase-anon-key
-```
-
-3. **Database Tables**
-   - Tables are created automatically on first run
-   - No manual setup required
-
-### Docker Deployment
+### Docker
 ```dockerfile
-FROM python:3.9-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 COPY . .
-EXPOSE 5000
+EXPOSE 8000
 
-CMD ["python", "main.py"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
-### Environment Variables
-```env
-# Production settings
-FLASK_ENV=production
-SUPABASE_URL=https://your-project-ref.supabase.co
-SUPABASE_KEY=your-supabase-anon-key
-ELEVENLABS_API_KEY=your_production_key
-OPENAI_API_KEY=your_production_key
+### Environment Variables for Production
+```bash
+FASTAPI_DEBUG=false
+FASTAPI_HOST=0.0.0.0
+FASTAPI_PORT=8000
+CORS_ORIGINS=https://yourdomain.com
+SECRET_KEY=your-production-secret-key
+ALLOWED_HOSTS=yourdomain.com
 ```
 
-### Scaling Considerations
-- Supabase handles database scaling automatically
-- Redis for session management (optional)
-- CDN for audio file delivery
-- Load balancer for API distribution
+## 📚 Documentation
+
+- [FastAPI Migration Guide](FASTAPI_MIGRATION.md) - Detailed migration documentation
+- [Database Migration Guide](DATABASE_MIGRATION.md) - Supabase integration details
+- [API Documentation](http://localhost:8000/docs) - Interactive API docs
+
+## 🔧 Development
+
+### Code Style
+```bash
+# Format code
+black .
+
+# Lint code
+flake8 .
+```
+
+### Adding New Endpoints
+1. Create a new router in `api/routers/`
+2. Add Pydantic models in `api/models.py`
+3. Add dependencies in `api/dependencies.py`
+4. Include the router in `app.py`
+
+### Adding New Services
+1. Create service class in `services/`
+2. Add dependency injection in `api/dependencies.py`
+3. Use in routers with dependency injection
 
 ## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Add tests for new functionality
+4. Add tests
 5. Submit a pull request
 
 ## 📄 License
@@ -461,16 +422,8 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 🆘 Support
 
-For support and questions:
-- Create an issue in the repository
-- Check the documentation
-- Review the API examples
-
-## 🔮 Future Enhancements
-
-- **Real-time Processing**: WebSocket support for live conversations
-- **Advanced Analytics**: Deep learning for better personality analysis
-- **Voice Cloning**: Custom voice creation from user audio samples
-- **Multi-language Support**: Internationalization and translation
-- **Advanced Calendar**: Meeting scheduling and conflict resolution
-- **Social Insights**: Relationship strength and network analysis
+For issues or questions:
+1. Check the [FastAPI Migration Guide](FASTAPI_MIGRATION.md)
+2. Review the API documentation at `/docs`
+3. Check application logs
+4. Verify environment configuration

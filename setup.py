@@ -54,8 +54,8 @@ def setup_environment():
     
     # Supabase configuration
     print("\n🌐 Supabase Configuration:")
-    supabase_url = input("Supabase URL (e.g., https://your-project.supabase.co): ").strip()
-    supabase_key = input("Supabase anon key: ").strip()
+    SUPABASE_URI = input("Supabase URL (e.g., https://your-project.supabase.co): ").strip()
+    SUPABASE_API_KEY = input("Supabase anon key: ").strip()
     
     # API Keys
     print("\n🔑 API Keys:")
@@ -79,8 +79,8 @@ def setup_environment():
     
     # Create .env file
     env_content = f"""# Database Configuration (Supabase PostgreSQL)
-SUPABASE_URL={supabase_url}
-SUPABASE_KEY={supabase_key}
+SUPABASE_URI={SUPABASE_URI}
+SUPABASE_API_KEY={SUPABASE_API_KEY}
 
 # API Keys (Required)
 ELEVENLABS_API_KEY={elevenlabs_key}

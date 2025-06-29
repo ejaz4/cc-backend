@@ -1,165 +1,137 @@
+"""
+Repository classes for database operations using Supabase SDK.
+Replaces SQLAlchemy ORM with direct Supabase table operations.
+"""
+
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, desc, asc, func
+import uuid
 
-from .connection import get_db
-from .models import (
-    ConversationSession, PlatformMessage, MainUser, UserProfile, Summary, 
-    AudioFile, AssistantSession, CalendarEvent, PlatformIntegration
-)
+from .supabase import get_supabase_client
+from .connection import get_current_timestamp
 
 logger = logging.getLogger(__name__)
 
 class BaseRepository:
-    """Base repository with common CRUD operations"""
+    """Base repository with common CRUD operations using Supabase"""
     
-    def __init__(self, model_class):
-        self.model = model_class
+    def __init__(self, table_name: str):
+        self.table_name = table_name
+        self.supabase = get_supabase_client()
     
     def create(self, data: Dict[str, Any]) -> Optional[int]:
         """Create a new record"""
         try:
-            with get_db() as db:
-                # Handle datetime fields
-                if 'created_at' not in data:
-                    data['created_at'] = datetime.utcnow()
-                if 'updated_at' not in data:
-                    data['updated_at'] = datetime.utcnow()
-                
-                # Create model instance
-                instance = self.model(**data)
-                db.add(instance)
-                db.commit()
-                db.refresh(instance)
-                return instance.id
+            # Add timestamps if not present
+            if 'created_at' not in data:
+                data['created_at'] = get_current_timestamp()
+            if 'updated_at' not in data:
+                data['updated_at'] = get_current_timestamp()
+            
+            # Handle UUID generation for session_id fields
+            if 'session_id' in data and not data['session_id']:
+                data['session_id'] = str(uuid.uuid4())
+            
+            response = self.supabase.table(self.table_name).insert(data).execute()
+            
+            if response.data:
+                return response.data[0]['id']
+            return None
         except Exception as e:
-            logger.error(f"Error creating record: {e}")
+            logger.error(f"Error creating record in {self.table_name}: {e}")
             return None
     
     def find_by_id(self, record_id: int) -> Optional[Dict[str, Any]]:
         """Find record by ID"""
         try:
-            with get_db() as db:
-                instance = db.query(self.model).filter(self.model.id == record_id).first()
-                return self._to_dict(instance) if instance else None
+            response = self.supabase.table(self.table_name).select("*").eq("id", record_id).execute()
+            return response.data[0] if response.data else None
         except Exception as e:
-            logger.error(f"Error finding record by ID: {e}")
+            logger.error(f"Error finding record by ID in {self.table_name}: {e}")
             return None
     
-    def find_all(self, filter_dict: Dict[str, Any] = None, limit: int = None, sort_by: str = None, order: str = 'desc') -> List[Dict[str, Any]]:
+    def find_all(self, filter_dict: Dict[str, Any] = None, limit: int = None, 
+                 sort_by: str = None, order: str = 'desc') -> List[Dict[str, Any]]:
         """Find all records with optional filter"""
         try:
-            with get_db() as db:
-                query = db.query(self.model)
-                
-                # Apply filters
-                if filter_dict:
-                    for key, value in filter_dict.items():
-                        if hasattr(self.model, key):
-                            if isinstance(value, list):
-                                query = query.filter(getattr(self.model, key).in_(value))
-                            else:
-                                query = query.filter(getattr(self.model, key) == value)
-                
-                # Apply sorting
-                if sort_by and hasattr(self.model, sort_by):
-                    if order == 'desc':
-                        query = query.order_by(desc(getattr(self.model, sort_by)))
+            query = self.supabase.table(self.table_name).select("*")
+            
+            # Apply filters
+            if filter_dict:
+                for key, value in filter_dict.items():
+                    if isinstance(value, list):
+                        query = query.in_(key, value)
                     else:
-                        query = query.order_by(asc(getattr(self.model, sort_by)))
-                
-                # Apply limit
-                if limit:
-                    query = query.limit(limit)
-                
-                instances = query.all()
-                return [self._to_dict(instance) for instance in instances]
+                        query = query.eq(key, value)
+            
+            # Apply sorting
+            if sort_by:
+                if order == 'desc':
+                    query = query.order(sort_by, desc=True)
+                else:
+                    query = query.order(sort_by, desc=False)
+            
+            # Apply limit
+            if limit:
+                query = query.limit(limit)
+            
+            response = query.execute()
+            return response.data or []
         except Exception as e:
-            logger.error(f"Error finding records: {e}")
+            logger.error(f"Error finding records in {self.table_name}: {e}")
             return []
     
     def update(self, record_id: int, data: Dict[str, Any]) -> bool:
         """Update record by ID"""
         try:
-            with get_db() as db:
-                instance = db.query(self.model).filter(self.model.id == record_id).first()
-                if not instance:
-                    return False
-                
-                # Update fields
-                for key, value in data.items():
-                    if hasattr(instance, key):
-                        setattr(instance, key, value)
-                
-                instance.updated_at = datetime.utcnow()
-                db.commit()
-                return True
+            # Add updated timestamp
+            data['updated_at'] = get_current_timestamp()
+            
+            response = self.supabase.table(self.table_name).update(data).eq("id", record_id).execute()
+            return len(response.data) > 0
         except Exception as e:
-            logger.error(f"Error updating record: {e}")
+            logger.error(f"Error updating record in {self.table_name}: {e}")
             return False
     
     def delete(self, record_id: int) -> bool:
         """Delete record by ID"""
         try:
-            with get_db() as db:
-                instance = db.query(self.model).filter(self.model.id == record_id).first()
-                if not instance:
-                    return False
-                
-                db.delete(instance)
-                db.commit()
-                return True
+            response = self.supabase.table(self.table_name).delete().eq("id", record_id).execute()
+            return len(response.data) > 0
         except Exception as e:
-            logger.error(f"Error deleting record: {e}")
+            logger.error(f"Error deleting record in {self.table_name}: {e}")
             return False
     
     def count(self, filter_dict: Dict[str, Any] = None) -> int:
         """Count records with optional filter"""
         try:
-            with get_db() as db:
-                query = db.query(func.count(self.model.id))
-                
-                if filter_dict:
-                    for key, value in filter_dict.items():
-                        if hasattr(self.model, key):
-                            query = query.filter(getattr(self.model, key) == value)
-                
-                return query.scalar()
+            query = self.supabase.table(self.table_name).select("id", count="exact")
+            
+            if filter_dict:
+                for key, value in filter_dict.items():
+                    if isinstance(value, list):
+                        query = query.in_(key, value)
+                    else:
+                        query = query.eq(key, value)
+            
+            response = query.execute()
+            return response.count or 0
         except Exception as e:
-            logger.error(f"Error counting records: {e}")
+            logger.error(f"Error counting records in {self.table_name}: {e}")
             return 0
-    
-    def _to_dict(self, instance) -> Dict[str, Any]:
-        """Convert SQLAlchemy instance to dictionary"""
-        if not instance:
-            return {}
-        
-        result = {}
-        for column in instance.__table__.columns:
-            value = getattr(instance, column.name)
-            if isinstance(value, datetime):
-                result[column.name] = value.isoformat()
-            else:
-                result[column.name] = value
-        
-        return result
 
 class ConversationSessionRepository(BaseRepository):
     """Conversation session repository for all platforms"""
     
     def __init__(self):
-        super().__init__(ConversationSession)
+        super().__init__("conversation_sessions")
     
     def find_by_session_id(self, session_id: str) -> Optional[Dict[str, Any]]:
         """Find conversation session by session ID"""
         try:
-            with get_db() as db:
-                instance = db.query(ConversationSession).filter(
-                    ConversationSession.session_id == session_id
-                ).first()
-                return self._to_dict(instance) if instance else None
+            response = self.supabase.table(self.table_name).select("*").eq("session_id", session_id).execute()
+            return response.data[0] if response.data else None
         except Exception as e:
             logger.error(f"Error finding session by session_id: {e}")
             return None
@@ -181,17 +153,11 @@ class ConversationSessionRepository(BaseRepository):
     def update_status(self, session_id: str, status: str) -> bool:
         """Update session status"""
         try:
-            with get_db() as db:
-                instance = db.query(ConversationSession).filter(
-                    ConversationSession.session_id == session_id
-                ).first()
-                if not instance:
-                    return False
-                
-                instance.status = status
-                instance.updated_at = datetime.utcnow()
-                db.commit()
-                return True
+            response = self.supabase.table(self.table_name).update({
+                'status': status,
+                'updated_at': get_current_timestamp()
+            }).eq("session_id", session_id).execute()
+            return len(response.data) > 0
         except Exception as e:
             logger.error(f"Error updating session status: {e}")
             return False
@@ -199,28 +165,31 @@ class ConversationSessionRepository(BaseRepository):
     def find_recent_sessions(self, main_user: str, limit: int = 10) -> List[Dict[str, Any]]:
         """Find recent conversation sessions for a user"""
         return self.find_all(
-            {'main_user': main_user}, 
-            limit=limit, 
-            sort_by='created_at'
+            filter_dict={'main_user': main_user},
+            limit=limit,
+            sort_by='created_at',
+            order='desc'
         )
     
     def find_by_participant(self, participant: str, main_user: str) -> List[Dict[str, Any]]:
-        """Find sessions where a specific participant was involved"""
+        """Find sessions by participant (requires joining with messages)"""
         try:
-            with get_db() as db:
-                # This is a complex query that would need to be implemented
-                # based on how participants are stored (JSON array or separate table)
-                instances = db.query(ConversationSession).filter(
-                    ConversationSession.main_user == main_user
-                ).all()
-                
-                # Filter by participant (assuming participants is stored as JSON)
-                result = []
-                for instance in instances:
-                    if instance.participants and participant in instance.participants:
-                        result.append(self._to_dict(instance))
-                
-                return result
+            # First get message IDs for the participant
+            message_response = self.supabase.table("platform_messages").select(
+                "conversation_session_id"
+            ).eq("username", participant).execute()
+            
+            if not message_response.data:
+                return []
+            
+            session_ids = list(set([msg['conversation_session_id'] for msg in message_response.data]))
+            
+            # Then get the sessions
+            response = self.supabase.table(self.table_name).select("*").in_(
+                "id", session_ids
+            ).eq("main_user", main_user).execute()
+            
+            return response.data or []
         except Exception as e:
             logger.error(f"Error finding sessions by participant: {e}")
             return []
@@ -228,41 +197,61 @@ class ConversationSessionRepository(BaseRepository):
     def add_message(self, session_id: str, message: Dict[str, Any]) -> bool:
         """Add a message to a conversation session"""
         try:
-            with get_db() as db:
-                # Find the session
-                session = db.query(ConversationSession).filter(
-                    ConversationSession.session_id == session_id
-                ).first()
-                if not session:
-                    return False
-                
-                # Create message
-                message['conversation_session_id'] = session.id
-                message_instance = PlatformMessage(**message)
-                db.add(message_instance)
-                
-                # Update total messages count
-                session.total_messages += 1
-                session.updated_at = datetime.utcnow()
-                
-                db.commit()
+            # Get the conversation session ID
+            session = self.find_by_session_id(session_id)
+            if not session:
+                return False
+            
+            # Add the conversation session ID to the message
+            message['conversation_session_id'] = session['id']
+            
+            # Create the message
+            message_repo = PlatformMessageRepository()
+            message_id = message_repo.create(message)
+            
+            if message_id:
+                # Update the total messages count
+                self.update(session['id'], {
+                    'total_messages': session.get('total_messages', 0) + 1
+                })
                 return True
-        except Exception as e:
-            logger.error(f"Error adding message: {e}")
             return False
+        except Exception as e:
+            logger.error(f"Error adding message to session: {e}")
+            return False
+
+class PlatformMessageRepository(BaseRepository):
+    """Platform message repository"""
+    
+    def __init__(self):
+        super().__init__("platform_messages")
+    
+    def find_by_session(self, conversation_session_id: int) -> List[Dict[str, Any]]:
+        """Find all messages for a conversation session"""
+        return self.find_all(
+            filter_dict={'conversation_session_id': conversation_session_id},
+            sort_by='timestamp',
+            order='asc'
+        )
+    
+    def find_important_messages(self, conversation_session_id: int) -> List[Dict[str, Any]]:
+        """Find important messages for a conversation session"""
+        return self.find_all({
+            'conversation_session_id': conversation_session_id,
+            'is_important': True
+        })
 
 class MainUserRepository(BaseRepository):
     """Main user repository"""
     
     def __init__(self):
-        super().__init__(MainUser)
+        super().__init__("main_users")
     
     def find_by_username(self, username: str) -> Optional[Dict[str, Any]]:
         """Find main user by username"""
         try:
-            with get_db() as db:
-                instance = db.query(MainUser).filter(MainUser.username == username).first()
-                return self._to_dict(instance) if instance else None
+            response = self.supabase.table(self.table_name).select("*").eq("username", username).execute()
+            return response.data[0] if response.data else None
         except Exception as e:
             logger.error(f"Error finding user by username: {e}")
             return None
@@ -270,107 +259,109 @@ class MainUserRepository(BaseRepository):
     def find_by_email(self, email: str) -> Optional[Dict[str, Any]]:
         """Find main user by email"""
         try:
-            with get_db() as db:
-                instance = db.query(MainUser).filter(MainUser.email == email).first()
-                return self._to_dict(instance) if instance else None
+            response = self.supabase.table(self.table_name).select("*").eq("email", email).execute()
+            return response.data[0] if response.data else None
         except Exception as e:
             logger.error(f"Error finding user by email: {e}")
             return None
     
     def update_voice_id(self, user_id: int, voice_id: str, voice_name: str) -> bool:
-        """Update user's voice ID"""
+        """Update user's voice ID and name"""
         return self.update(user_id, {
             'voice_id': voice_id,
             'voice_name': voice_name
         })
     
     def find_active_users(self) -> List[Dict[str, Any]]:
-        """Find all active main users"""
+        """Find all active users"""
         return self.find_all({'is_active': True})
     
     def add_connected_platform(self, user_id: int, platform: str) -> bool:
         """Add a platform to user's connected platforms"""
         try:
-            with get_db() as db:
-                user = db.query(MainUser).filter(MainUser.id == user_id).first()
-                if not user:
-                    return False
-                
-                # Get current platforms
-                platforms = user.connected_platforms or []
-                if platform not in platforms:
-                    platforms.append(platform)
-                    user.connected_platforms = platforms
-                    user.updated_at = datetime.utcnow()
-                    db.commit()
-                
-                return True
+            user = self.find_by_id(user_id)
+            if not user:
+                return False
+            
+            connected_platforms = user.get('connected_platforms', [])
+            if platform not in connected_platforms:
+                connected_platforms.append(platform)
+                return self.update(user_id, {'connected_platforms': connected_platforms})
+            return True
         except Exception as e:
             logger.error(f"Error adding connected platform: {e}")
             return False
 
 class UserProfileRepository(BaseRepository):
-    """User profile repository for people the main user talks to"""
+    """User profile repository"""
     
     def __init__(self):
-        super().__init__(UserProfile)
+        super().__init__("user_profiles")
     
     def find_by_username(self, username: str, platform: str, main_user_id: int) -> Optional[Dict[str, Any]]:
         """Find user profile by username, platform, and main user"""
         try:
-            with get_db() as db:
-                instance = db.query(UserProfile).filter(
-                    and_(
-                        UserProfile.username == username,
-                        UserProfile.platform == platform,
-                        UserProfile.main_user_id == main_user_id
-                    )
-                ).first()
-                return self._to_dict(instance) if instance else None
+            response = self.supabase.table(self.table_name).select("*").eq("username", username).eq(
+                "platform", platform
+            ).eq("main_user_id", main_user_id).execute()
+            return response.data[0] if response.data else None
         except Exception as e:
             logger.error(f"Error finding profile by username: {e}")
             return None
     
     def find_by_main_user(self, main_user_id: int, platform: str = None) -> List[Dict[str, Any]]:
-        """Find all user profiles for a main user"""
+        """Find all profiles for a main user"""
         filter_dict = {'main_user_id': main_user_id}
         if platform:
             filter_dict['platform'] = platform
         return self.find_all(filter_dict)
     
     def find_by_relationship_type(self, main_user_id: int, relationship_type: str) -> List[Dict[str, Any]]:
-        """Find user profiles by relationship type"""
+        """Find profiles by relationship type"""
         return self.find_all({
             'main_user_id': main_user_id,
             'relationship_type': relationship_type
         })
     
     def update_personality_data(self, profile_id: int, personality_data: Dict[str, Any]) -> bool:
-        """Update personality and context data"""
+        """Update personality data for a profile"""
         return self.update(profile_id, personality_data)
     
     def update_frequency_score(self, profile_id: int, frequency_score: float) -> bool:
-        """Update interaction frequency score"""
+        """Update frequency score for a profile"""
         return self.update(profile_id, {
             'frequency_score': frequency_score,
-            'last_interaction': datetime.utcnow()
+            'last_interaction': get_current_timestamp()
         })
     
     def find_frequent_contacts(self, main_user_id: int, limit: int = 10) -> List[Dict[str, Any]]:
-        """Find most frequent contacts for a main user"""
+        """Find most frequent contacts for a user"""
         return self.find_all(
-            {'main_user_id': main_user_id},
+            filter_dict={'main_user_id': main_user_id},
             limit=limit,
-            sort_by='frequency_score'
+            sort_by='frequency_score',
+            order='desc'
         )
     
     def find_by_interests(self, main_user_id: int, interests: List[str]) -> List[Dict[str, Any]]:
-        """Find user profiles by interests"""
+        """Find profiles by interests (requires JSON overlap query)"""
         try:
-            with get_db() as db:
-                # This would need to be implemented based on how interests are stored
-                # For now, return all profiles for the user
-                return self.find_all({'main_user_id': main_user_id})
+            # This is a simplified version - Supabase supports JSON operations
+            # but the exact syntax may vary based on your setup
+            response = self.supabase.table(self.table_name).select("*").eq(
+                "main_user_id", main_user_id
+            ).execute()
+            
+            # Filter in Python for now - can be optimized with proper JSON queries
+            profiles = response.data or []
+            matching_profiles = []
+            
+            for profile in profiles:
+                profile_interests = profile.get('interests', [])
+                if any(interest in profile_interests for interest in interests):
+                    matching_profiles.append(profile)
+            
+            return matching_profiles
         except Exception as e:
             logger.error(f"Error finding profiles by interests: {e}")
             return []
@@ -387,57 +378,54 @@ class UserProfileRepository(BaseRepository):
             
             if existing:
                 # Update existing profile
-                profile_id = existing['id']
-                self.update(profile_id, profile_data)
-                return profile_id
+                self.update(existing['id'], profile_data)
+                return existing['id']
             else:
                 # Create new profile
                 return self.create(profile_data)
         except Exception as e:
-            logger.error(f"Error creating/updating profile: {e}")
+            logger.error(f"Error creating or updating profile: {e}")
             return None
 
 class SummaryRepository(BaseRepository):
     """Summary repository"""
     
     def __init__(self):
-        super().__init__(Summary)
+        super().__init__("summaries")
     
     def find_by_session_id(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """Find summary by session ID"""
+        """Find summary by conversation session ID"""
         try:
-            with get_db() as db:
-                # First find the conversation session
-                session = db.query(ConversationSession).filter(
-                    ConversationSession.session_id == session_id
-                ).first()
-                if not session:
-                    return None
-                
-                # Then find the summary
-                instance = db.query(Summary).filter(
-                    Summary.conversation_session_id == session.id
-                ).first()
-                return self._to_dict(instance) if instance else None
+            # First get the conversation session
+            session_repo = ConversationSessionRepository()
+            session = session_repo.find_by_session_id(session_id)
+            if not session:
+                return None
+            
+            # Then find the summary
+            response = self.supabase.table(self.table_name).select("*").eq(
+                "conversation_session_id", session['id']
+            ).execute()
+            return response.data[0] if response.data else None
         except Exception as e:
             logger.error(f"Error finding summary by session_id: {e}")
             return None
     
     def find_recent_summaries(self, main_user_id: int, limit: int = 10) -> List[Dict[str, Any]]:
-        """Find recent summaries for a main user"""
+        """Find recent summaries for a user"""
         return self.find_all(
-            {'main_user_id': main_user_id},
+            filter_dict={'main_user_id': main_user_id},
             limit=limit,
-            sort_by='created_at'
+            sort_by='created_at',
+            order='desc'
         )
     
     def find_by_participants(self, participants: List[str], main_user_id: int) -> List[Dict[str, Any]]:
-        """Find summaries involving specific participants"""
+        """Find summaries by participants (requires complex query)"""
         try:
-            with get_db() as db:
-                # This would need to be implemented based on how participants are stored
-                # For now, return all summaries for the user
-                return self.find_all({'main_user_id': main_user_id})
+            # This would require a more complex query involving joins
+            # For now, return recent summaries for the user
+            return self.find_recent_summaries(main_user_id, limit=20)
         except Exception as e:
             logger.error(f"Error finding summaries by participants: {e}")
             return []
@@ -446,24 +434,23 @@ class AudioFileRepository(BaseRepository):
     """Audio file repository"""
     
     def __init__(self):
-        super().__init__(AudioFile)
+        super().__init__("audio_files")
     
     def find_by_session_id(self, session_id: str) -> List[Dict[str, Any]]:
-        """Find all audio files for a session"""
+        """Find all audio files for a conversation session"""
         try:
-            with get_db() as db:
-                # First find the conversation session
-                session = db.query(ConversationSession).filter(
-                    ConversationSession.session_id == session_id
-                ).first()
-                if not session:
-                    return []
-                
-                # Then find the audio files
-                instances = db.query(AudioFile).filter(
-                    AudioFile.conversation_session_id == session.id
-                ).all()
-                return [self._to_dict(instance) for instance in instances]
+            # First get the conversation session
+            session_repo = ConversationSessionRepository()
+            session = session_repo.find_by_session_id(session_id)
+            if not session:
+                return []
+            
+            # Then find the audio files
+            response = self.supabase.table(self.table_name).select("*").eq(
+                "conversation_session_id", session['id']
+            ).order("line_number", desc=False).execute()
+            
+            return response.data or []
         except Exception as e:
             logger.error(f"Error finding audio files by session_id: {e}")
             return []
@@ -471,22 +458,18 @@ class AudioFileRepository(BaseRepository):
     def find_by_username(self, session_id: str, username: str) -> List[Dict[str, Any]]:
         """Find audio files for a specific user in a session"""
         try:
-            with get_db() as db:
-                # First find the conversation session
-                session = db.query(ConversationSession).filter(
-                    ConversationSession.session_id == session_id
-                ).first()
-                if not session:
-                    return []
-                
-                # Then find the audio files
-                instances = db.query(AudioFile).filter(
-                    and_(
-                        AudioFile.conversation_session_id == session.id,
-                        AudioFile.username == username
-                    )
-                ).all()
-                return [self._to_dict(instance) for instance in instances]
+            # First get the conversation session
+            session_repo = ConversationSessionRepository()
+            session = session_repo.find_by_session_id(session_id)
+            if not session:
+                return []
+            
+            # Then find the audio files for the user
+            response = self.supabase.table(self.table_name).select("*").eq(
+                "conversation_session_id", session['id']
+            ).eq("username", username).order("line_number", desc=False).execute()
+            
+            return response.data or []
         except Exception as e:
             logger.error(f"Error finding audio files by username: {e}")
             return []
@@ -501,22 +484,18 @@ class AudioFileRepository(BaseRepository):
     def find_completed_audio(self, session_id: str) -> List[Dict[str, Any]]:
         """Find completed audio files for a session"""
         try:
-            with get_db() as db:
-                # First find the conversation session
-                session = db.query(ConversationSession).filter(
-                    ConversationSession.session_id == session_id
-                ).first()
-                if not session:
-                    return []
-                
-                # Then find the completed audio files
-                instances = db.query(AudioFile).filter(
-                    and_(
-                        AudioFile.conversation_session_id == session.id,
-                        AudioFile.status == 'completed'
-                    )
-                ).all()
-                return [self._to_dict(instance) for instance in instances]
+            # First get the conversation session
+            session_repo = ConversationSessionRepository()
+            session = session_repo.find_by_session_id(session_id)
+            if not session:
+                return []
+            
+            # Then find the completed audio files
+            response = self.supabase.table(self.table_name).select("*").eq(
+                "conversation_session_id", session['id']
+            ).eq("status", "completed").order("line_number", desc=False).execute()
+            
+            return response.data or []
         except Exception as e:
             logger.error(f"Error finding completed audio files: {e}")
             return []
@@ -525,16 +504,13 @@ class AssistantSessionRepository(BaseRepository):
     """Assistant session repository"""
     
     def __init__(self):
-        super().__init__(AssistantSession)
+        super().__init__("assistant_sessions")
     
     def find_by_session_id(self, session_id: str) -> Optional[Dict[str, Any]]:
         """Find assistant session by session ID"""
         try:
-            with get_db() as db:
-                instance = db.query(AssistantSession).filter(
-                    AssistantSession.session_id == session_id
-                ).first()
-                return self._to_dict(instance) if instance else None
+            response = self.supabase.table(self.table_name).select("*").eq("session_id", session_id).execute()
+            return response.data[0] if response.data else None
         except Exception as e:
             logger.error(f"Error finding assistant session by session_id: {e}")
             return None
@@ -547,23 +523,16 @@ class AssistantSessionRepository(BaseRepository):
         })
     
     def add_message(self, session_id: str, message: Dict[str, Any]) -> bool:
-        """Add a message to assistant session"""
+        """Add a message to an assistant session"""
         try:
-            with get_db() as db:
-                instance = db.query(AssistantSession).filter(
-                    AssistantSession.session_id == session_id
-                ).first()
-                if not instance:
-                    return False
-                
-                # Get current messages
-                messages = instance.messages or []
-                messages.append(message)
-                instance.messages = messages
-                instance.updated_at = datetime.utcnow()
-                
-                db.commit()
-                return True
+            session = self.find_by_session_id(session_id)
+            if not session:
+                return False
+            
+            messages = session.get('messages', [])
+            messages.append(message)
+            
+            return self.update(session['id'], {'messages': messages})
         except Exception as e:
             logger.error(f"Error adding message to assistant session: {e}")
             return False
@@ -572,33 +541,31 @@ class CalendarEventRepository(BaseRepository):
     """Calendar event repository"""
     
     def __init__(self):
-        super().__init__(CalendarEvent)
+        super().__init__("calendar_events")
     
     def find_by_user_id(self, main_user_id: int) -> List[Dict[str, Any]]:
-        """Find events for a user"""
+        """Find all calendar events for a user"""
         return self.find_all(
-            {'main_user_id': main_user_id},
-            sort_by='start_time'
+            filter_dict={'main_user_id': main_user_id},
+            sort_by='start_time',
+            order='asc'
         )
     
     def find_upcoming_events(self, main_user_id: int, limit: int = 10) -> List[Dict[str, Any]]:
-        """Find upcoming events for a user"""
+        """Find upcoming calendar events for a user"""
         try:
-            with get_db() as db:
-                now = datetime.utcnow()
-                instances = db.query(CalendarEvent).filter(
-                    and_(
-                        CalendarEvent.main_user_id == main_user_id,
-                        CalendarEvent.start_time >= now
-                    )
-                ).order_by(CalendarEvent.start_time).limit(limit).all()
-                return [self._to_dict(instance) for instance in instances]
+            current_time = get_current_timestamp()
+            response = self.supabase.table(self.table_name).select("*").eq(
+                "main_user_id", main_user_id
+            ).gte("start_time", current_time).order("start_time", desc=False).limit(limit).execute()
+            
+            return response.data or []
         except Exception as e:
             logger.error(f"Error finding upcoming events: {e}")
             return []
     
     def update_google_event_id(self, event_id: int, google_event_id: str) -> bool:
-        """Update event with Google Calendar event ID"""
+        """Update Google Calendar event ID"""
         return self.update(event_id, {
             'google_event_id': google_event_id,
             'status': 'created'
@@ -608,21 +575,17 @@ class PlatformIntegrationRepository(BaseRepository):
     """Platform integration repository"""
     
     def __init__(self):
-        super().__init__(PlatformIntegration)
+        super().__init__("platform_integrations")
     
     def find_by_user_and_platform(self, main_user_id: int, platform: str) -> Optional[Dict[str, Any]]:
-        """Find integration by user ID and platform"""
+        """Find platform integration by user and platform"""
         try:
-            with get_db() as db:
-                instance = db.query(PlatformIntegration).filter(
-                    and_(
-                        PlatformIntegration.main_user_id == main_user_id,
-                        PlatformIntegration.platform == platform
-                    )
-                ).first()
-                return self._to_dict(instance) if instance else None
+            response = self.supabase.table(self.table_name).select("*").eq(
+                "main_user_id", main_user_id
+            ).eq("platform", platform).execute()
+            return response.data[0] if response.data else None
         except Exception as e:
-            logger.error(f"Error finding integration by user and platform: {e}")
+            logger.error(f"Error finding platform integration: {e}")
             return None
     
     def find_connected_platforms(self, main_user_id: int) -> List[Dict[str, Any]]:
@@ -638,4 +601,4 @@ class PlatformIntegrationRepository(BaseRepository):
     
     def update_sync_status(self, integration_id: int, last_sync: datetime) -> bool:
         """Update last sync timestamp"""
-        return self.update(integration_id, {'last_sync': last_sync}) 
+        return self.update(integration_id, {'last_sync': last_sync.isoformat()}) 

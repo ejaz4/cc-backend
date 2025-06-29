@@ -1,298 +1,342 @@
+"""
+Database table schemas and field definitions for Supabase.
+These are documentation stubs - actual table operations use the Supabase SDK.
+"""
+
 from datetime import datetime
-from typing import Optional, List, Dict, Any
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float, JSON, ForeignKey, Index
-from sqlalchemy.orm import relationship, declarative_base
-from sqlalchemy.dialects.postgresql import UUID
-import uuid
+from typing import Optional, List, Dict, Any, Union
+from dataclasses import dataclass
 
-from .connection import Base
+# Type aliases for common field types
+JsonField = Dict[str, Any]
+DateTimeField = datetime
+StringField = str
+IntegerField = int
+BooleanField = bool
+FloatField = float
 
-class ConversationSession(Base):
-    """Generic conversation session model for any platform"""
-    __tablename__ = 'conversation_sessions'
+@dataclass
+class ConversationSession:
+    """
+    conversation_sessions table
     
-    id = Column(Integer, primary_key=True)
-    session_id = Column(String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
-    platform = Column(String(50), nullable=False)  # whatsapp, instagram, discord, etc.
-    group_name = Column(String(255), nullable=False)
-    main_user = Column(String(255), nullable=False)
-    status = Column(String(50), default='uploaded')  # uploaded, processing, summarized, completed
-    file_path = Column(String(500))
-    total_messages = Column(Integer, default=0)
-    conversation_type = Column(String(50), default='group')  # group, direct, channel
-    platform_specific_data = Column(JSON)
-    date_range = Column(JSON)  # start_date, end_date
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    # Relationships
-    messages = relationship("PlatformMessage", back_populates="conversation_session", cascade="all, delete-orphan")
-    summary = relationship("Summary", back_populates="conversation_session", uselist=False, cascade="all, delete-orphan")
-    audio_files = relationship("AudioFile", back_populates="conversation_session", cascade="all, delete-orphan")
-    
-    # Indexes
-    __table_args__ = (
-        Index('idx_session_id', 'session_id'),
-        Index('idx_platform_main_user', 'platform', 'main_user'),
-        Index('idx_status', 'status'),
-        Index('idx_created_at', 'created_at'),
-    )
+    Fields:
+        id: Integer (Primary Key, Auto-increment)
+        session_id: String(36) (Unique, UUID)
+        platform: String(50) (Required) - whatsapp, instagram, discord, etc.
+        group_name: String(255) (Required)
+        main_user: String(255) (Required)
+        status: String(50) (Default: 'uploaded') - uploaded, processing, summarized, completed
+        file_path: String(500) (Optional)
+        total_messages: Integer (Default: 0)
+        conversation_type: String(50) (Default: 'group') - group, direct, channel
+        platform_specific_data: JSON (Optional)
+        date_range: JSON (Optional) - start_date, end_date
+        created_at: DateTime (Default: now)
+        updated_at: DateTime (Default: now, Auto-update)
+    """
+    id: Optional[IntegerField] = None
+    session_id: Optional[StringField] = None
+    platform: Optional[StringField] = None
+    group_name: Optional[StringField] = None
+    main_user: Optional[StringField] = None
+    status: Optional[StringField] = None
+    file_path: Optional[StringField] = None
+    total_messages: Optional[IntegerField] = None
+    conversation_type: Optional[StringField] = None
+    platform_specific_data: Optional[JsonField] = None
+    date_range: Optional[JsonField] = None
+    created_at: Optional[DateTimeField] = None
+    updated_at: Optional[DateTimeField] = None
 
-class PlatformMessage(Base):
-    """Generic message model for any platform"""
-    __tablename__ = 'platform_messages'
+@dataclass
+class PlatformMessage:
+    """
+    platform_messages table
     
-    id = Column(Integer, primary_key=True)
-    conversation_session_id = Column(Integer, ForeignKey('conversation_sessions.id'), nullable=False)
-    username = Column(String(255), nullable=False)
-    content = Column(Text, nullable=False)
-    timestamp = Column(DateTime, nullable=False)
-    message_type = Column(String(50), default='text')  # text, media, system, reaction
-    is_important = Column(Boolean, default=False)
-    platform_specific_data = Column(JSON)  # Platform-specific metadata
-    reactions = Column(JSON)  # For platforms with reactions
-    reply_to = Column(String(255))  # For threaded conversations
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    # Relationships
-    conversation_session = relationship("ConversationSession", back_populates="messages")
-    
-    # Indexes
-    __table_args__ = (
-        Index('idx_conversation_session_id', 'conversation_session_id'),
-        Index('idx_username', 'username'),
-        Index('idx_timestamp', 'timestamp'),
-        Index('idx_is_important', 'is_important'),
-    )
+    Fields:
+        id: Integer (Primary Key, Auto-increment)
+        conversation_session_id: Integer (Foreign Key to conversation_sessions.id)
+        username: String(255) (Required)
+        content: Text (Required)
+        timestamp: DateTime (Required)
+        message_type: String(50) (Default: 'text') - text, media, system, reaction
+        is_important: Boolean (Default: False)
+        platform_specific_data: JSON (Optional) - Platform-specific metadata
+        reactions: JSON (Optional) - For platforms with reactions
+        reply_to: String(255) (Optional) - For threaded conversations
+        created_at: DateTime (Default: now)
+    """
+    id: Optional[IntegerField] = None
+    conversation_session_id: Optional[IntegerField] = None
+    username: Optional[StringField] = None
+    content: Optional[StringField] = None
+    timestamp: Optional[DateTimeField] = None
+    message_type: Optional[StringField] = None
+    is_important: Optional[BooleanField] = None
+    platform_specific_data: Optional[JsonField] = None
+    reactions: Optional[JsonField] = None
+    reply_to: Optional[StringField] = None
+    created_at: Optional[DateTimeField] = None
 
-class MainUser(Base):
-    """Main user (app owner) model"""
-    __tablename__ = 'main_users'
+@dataclass
+class MainUser:
+    """
+    main_users table
     
-    id = Column(Integer, primary_key=True)
-    username = Column(String(255), unique=True, nullable=False)
-    email = Column(String(255), unique=True, nullable=False)
-    voice_id = Column(String(255))  # ElevenLabs voice ID
-    voice_name = Column(String(255))
-    is_active = Column(Boolean, default=True)
-    preferences = Column(JSON)
-    connected_platforms = Column(JSON)  # List of platforms they use
-    platform_credentials = Column(JSON)  # Encrypted platform tokens
-    default_voice_settings = Column(JSON)
-    summary_preferences = Column(JSON)
-    privacy_settings = Column(JSON)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    # Relationships
-    conversation_sessions = relationship("ConversationSession", backref="main_user_obj")
-    user_profiles = relationship("UserProfile", back_populates="main_user_obj")
-    assistant_sessions = relationship("AssistantSession", back_populates="main_user_obj")
-    calendar_events = relationship("CalendarEvent", back_populates="main_user_obj")
-    platform_integrations = relationship("PlatformIntegration", back_populates="main_user_obj")
-    
-    # Indexes
-    __table_args__ = (
-        Index('idx_username', 'username'),
-        Index('idx_email', 'email'),
-        Index('idx_is_active', 'is_active'),
-    )
+    Fields:
+        id: Integer (Primary Key, Auto-increment)
+        username: String(255) (Unique, Required)
+        email: String(255) (Unique, Required)
+        voice_id: String(255) (Optional) - ElevenLabs voice ID
+        voice_name: String(255) (Optional)
+        is_active: Boolean (Default: True)
+        preferences: JSON (Optional)
+        connected_platforms: JSON (Optional) - List of platforms they use
+        platform_credentials: JSON (Optional) - Encrypted platform tokens
+        default_voice_settings: JSON (Optional)
+        summary_preferences: JSON (Optional)
+        privacy_settings: JSON (Optional)
+        created_at: DateTime (Default: now)
+        updated_at: DateTime (Default: now, Auto-update)
+    """
+    id: Optional[IntegerField] = None
+    username: Optional[StringField] = None
+    email: Optional[StringField] = None
+    voice_id: Optional[StringField] = None
+    voice_name: Optional[StringField] = None
+    is_active: Optional[BooleanField] = None
+    preferences: Optional[JsonField] = None
+    connected_platforms: Optional[JsonField] = None
+    platform_credentials: Optional[JsonField] = None
+    default_voice_settings: Optional[JsonField] = None
+    summary_preferences: Optional[JsonField] = None
+    privacy_settings: Optional[JsonField] = None
+    created_at: Optional[DateTimeField] = None
+    updated_at: Optional[DateTimeField] = None
 
-class UserProfile(Base):
-    """User profile for people the main user talks to"""
-    __tablename__ = 'user_profiles'
+@dataclass
+class UserProfile:
+    """
+    user_profiles table
     
-    id = Column(Integer, primary_key=True)
-    username = Column(String(255), nullable=False)
-    platform = Column(String(50), nullable=False)
-    main_user_id = Column(Integer, ForeignKey('main_users.id'), nullable=False)
-    display_name = Column(String(255))
-    voice_id = Column(String(255))  # ElevenLabs voice ID
-    voice_name = Column(String(255))
-    profile_picture = Column(String(500))
-    is_active = Column(Boolean, default=True)
-    
-    # Personality and context data
-    personality_traits = Column(JSON)  # friendly, professional, etc.
-    interests = Column(JSON)  # topics they talk about
-    communication_style = Column(JSON)  # formal, casual, emoji_heavy, etc.
-    frequency_score = Column(Float, default=0.0)  # How often they interact
-    last_interaction = Column(DateTime)
-    
-    # Platform-specific data
-    platform_user_id = Column(String(255))  # Platform's internal user ID
-    platform_specific_data = Column(JSON)
-    
-    # Relationship context
-    relationship_type = Column(String(50), default='friend')  # friend, family, colleague, etc.
-    trust_score = Column(Float, default=0.5)  # 0-1 scale
-    preferred_topics = Column(JSON)
-    avoided_topics = Column(JSON)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    # Relationships
-    main_user_obj = relationship("MainUser", back_populates="user_profiles")
-    
-    # Indexes
-    __table_args__ = (
-        Index('idx_username_platform_main_user', 'username', 'platform', 'main_user_id'),
-        Index('idx_main_user_id', 'main_user_id'),
-        Index('idx_platform', 'platform'),
-        Index('idx_relationship_type', 'relationship_type'),
-        Index('idx_frequency_score', 'frequency_score'),
-        Index('idx_trust_score', 'trust_score'),
-    )
+    Fields:
+        id: Integer (Primary Key, Auto-increment)
+        username: String(255) (Required)
+        platform: String(50) (Required)
+        main_user_id: Integer (Foreign Key to main_users.id)
+        display_name: String(255) (Optional)
+        voice_id: String(255) (Optional) - ElevenLabs voice ID
+        voice_name: String(255) (Optional)
+        profile_picture: String(500) (Optional)
+        is_active: Boolean (Default: True)
+        personality_traits: JSON (Optional) - friendly, professional, etc.
+        interests: JSON (Optional) - topics they talk about
+        communication_style: JSON (Optional) - formal, casual, emoji_heavy, etc.
+        frequency_score: Float (Default: 0.0) - How often they interact
+        last_interaction: DateTime (Optional)
+        platform_user_id: String(255) (Optional) - Platform's internal user ID
+        platform_specific_data: JSON (Optional)
+        relationship_type: String(50) (Default: 'friend') - friend, family, colleague, etc.
+        trust_score: Float (Default: 0.5) - 0-1 scale
+        preferred_topics: JSON (Optional)
+        avoided_topics: JSON (Optional)
+        created_at: DateTime (Default: now)
+        updated_at: DateTime (Default: now, Auto-update)
+    """
+    id: Optional[IntegerField] = None
+    username: Optional[StringField] = None
+    platform: Optional[StringField] = None
+    main_user_id: Optional[IntegerField] = None
+    display_name: Optional[StringField] = None
+    voice_id: Optional[StringField] = None
+    voice_name: Optional[StringField] = None
+    profile_picture: Optional[StringField] = None
+    is_active: Optional[BooleanField] = None
+    personality_traits: Optional[JsonField] = None
+    interests: Optional[JsonField] = None
+    communication_style: Optional[JsonField] = None
+    frequency_score: Optional[FloatField] = None
+    last_interaction: Optional[DateTimeField] = None
+    platform_user_id: Optional[StringField] = None
+    platform_specific_data: Optional[JsonField] = None
+    relationship_type: Optional[StringField] = None
+    trust_score: Optional[FloatField] = None
+    preferred_topics: Optional[JsonField] = None
+    avoided_topics: Optional[JsonField] = None
+    created_at: Optional[DateTimeField] = None
+    updated_at: Optional[DateTimeField] = None
 
-class Summary(Base):
-    """Chat summary model"""
-    __tablename__ = 'summaries'
+@dataclass
+class Summary:
+    """
+    summaries table
     
-    id = Column(Integer, primary_key=True)
-    conversation_session_id = Column(Integer, ForeignKey('conversation_sessions.id'), nullable=False)
-    main_user_id = Column(Integer, ForeignKey('main_users.id'), nullable=False)
-    summary_text = Column(Text, nullable=False)
-    script_lines = Column(JSON)  # List of dialogue lines
-    participants = Column(JSON)
-    summary_type = Column(String(50), default='dialogue')  # dialogue, bullet_points, etc.
-    word_count = Column(Integer, default=0)
-    generated_by = Column(String(50), default='gpt-4')
-    
-    # Context and personality data
-    personality_context = Column(JSON)  # How personalities influenced summary
-    relationship_context = Column(JSON)  # Relationship dynamics
-    tone_analysis = Column(JSON)  # Overall conversation tone
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    # Relationships
-    conversation_session = relationship("ConversationSession", back_populates="summary")
-    main_user_obj = relationship("MainUser")
-    
-    # Indexes
-    __table_args__ = (
-        Index('idx_conversation_session_id', 'conversation_session_id'),
-        Index('idx_main_user_id', 'main_user_id'),
-        Index('idx_created_at', 'created_at'),
-    )
+    Fields:
+        id: Integer (Primary Key, Auto-increment)
+        conversation_session_id: Integer (Foreign Key to conversation_sessions.id)
+        main_user_id: Integer (Foreign Key to main_users.id)
+        summary_text: Text (Required)
+        script_lines: JSON (Optional) - List of dialogue lines
+        participants: JSON (Optional)
+        summary_type: String(50) (Default: 'dialogue') - dialogue, bullet_points, etc.
+        word_count: Integer (Default: 0)
+        generated_by: String(50) (Default: 'gpt-4')
+        personality_context: JSON (Optional) - How personalities influenced summary
+        relationship_context: JSON (Optional) - Relationship dynamics
+        tone_analysis: JSON (Optional) - Overall conversation tone
+        created_at: DateTime (Default: now)
+        updated_at: DateTime (Default: now, Auto-update)
+    """
+    id: Optional[IntegerField] = None
+    conversation_session_id: Optional[IntegerField] = None
+    main_user_id: Optional[IntegerField] = None
+    summary_text: Optional[StringField] = None
+    script_lines: Optional[JsonField] = None
+    participants: Optional[JsonField] = None
+    summary_type: Optional[StringField] = None
+    word_count: Optional[IntegerField] = None
+    generated_by: Optional[StringField] = None
+    personality_context: Optional[JsonField] = None
+    relationship_context: Optional[JsonField] = None
+    tone_analysis: Optional[JsonField] = None
+    created_at: Optional[DateTimeField] = None
+    updated_at: Optional[DateTimeField] = None
 
-class AudioFile(Base):
-    """Audio file model for generated TTS"""
-    __tablename__ = 'audio_files'
+@dataclass
+class AudioFile:
+    """
+    audio_files table
     
-    id = Column(Integer, primary_key=True)
-    conversation_session_id = Column(Integer, ForeignKey('conversation_sessions.id'), nullable=False)
-    username = Column(String(255), nullable=False)
-    line_number = Column(Integer, nullable=False)
-    file_path = Column(String(500))
-    file_name = Column(String(255))
-    voice_id = Column(String(255))
-    duration = Column(Float)  # in seconds
-    file_size = Column(Integer)  # in bytes
-    status = Column(String(50), default='pending')  # pending, processing, completed, failed
-    error_message = Column(Text)
-    elevenlabs_generation_id = Column(String(255))
-    
-    # Personality-based voice settings
-    voice_settings = Column(JSON)  # Custom voice settings based on personality
-    emotion_context = Column(JSON)  # Emotional context for voice generation
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    # Relationships
-    conversation_session = relationship("ConversationSession", back_populates="audio_files")
-    
-    # Indexes
-    __table_args__ = (
-        Index('idx_conversation_session_id', 'conversation_session_id'),
-        Index('idx_username', 'username'),
-        Index('idx_status', 'status'),
-        Index('idx_voice_id', 'voice_id'),
-    )
+    Fields:
+        id: Integer (Primary Key, Auto-increment)
+        conversation_session_id: Integer (Foreign Key to conversation_sessions.id)
+        username: String(255) (Required)
+        line_number: Integer (Required)
+        file_path: String(500) (Optional)
+        file_name: String(255) (Optional)
+        voice_id: String(255) (Optional)
+        duration: Float (Optional) - in seconds
+        file_size: Integer (Optional) - in bytes
+        status: String(50) (Default: 'pending') - pending, processing, completed, failed
+        error_message: Text (Optional)
+        elevenlabs_generation_id: String(255) (Optional)
+        voice_settings: JSON (Optional) - Custom voice settings based on personality
+        emotion_context: JSON (Optional) - Emotional context for voice generation
+        created_at: DateTime (Default: now)
+        updated_at: DateTime (Default: now, Auto-update)
+    """
+    id: Optional[IntegerField] = None
+    conversation_session_id: Optional[IntegerField] = None
+    username: Optional[StringField] = None
+    line_number: Optional[IntegerField] = None
+    file_path: Optional[StringField] = None
+    file_name: Optional[StringField] = None
+    voice_id: Optional[StringField] = None
+    duration: Optional[FloatField] = None
+    file_size: Optional[IntegerField] = None
+    status: Optional[StringField] = None
+    error_message: Optional[StringField] = None
+    elevenlabs_generation_id: Optional[StringField] = None
+    voice_settings: Optional[JsonField] = None
+    emotion_context: Optional[JsonField] = None
+    created_at: Optional[DateTimeField] = None
+    updated_at: Optional[DateTimeField] = None
 
-class AssistantSession(Base):
-    """Assistant conversation session model"""
-    __tablename__ = 'assistant_sessions'
+@dataclass
+class AssistantSession:
+    """
+    assistant_sessions table
     
-    id = Column(Integer, primary_key=True)
-    session_id = Column(String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
-    main_user_id = Column(Integer, ForeignKey('main_users.id'), nullable=False)
-    messages = Column(JSON)  # Array of message objects
-    context = Column(JSON)  # Calendar events, user preferences, etc.
-    is_active = Column(Boolean, default=True)
-    assistant_type = Column(String(50), default='elevenlabs')  # elevenlabs, custom
-    
-    # User profile context
-    user_profiles_context = Column(JSON)  # Relevant user profiles
-    conversation_history_context = Column(JSON)  # Recent conversations
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    # Relationships
-    main_user_obj = relationship("MainUser", back_populates="assistant_sessions")
-    
-    # Indexes
-    __table_args__ = (
-        Index('idx_session_id', 'session_id'),
-        Index('idx_main_user_id', 'main_user_id'),
-        Index('idx_is_active', 'is_active'),
-    )
+    Fields:
+        id: Integer (Primary Key, Auto-increment)
+        session_id: String(36) (Unique, UUID)
+        main_user_id: Integer (Foreign Key to main_users.id)
+        messages: JSON (Optional) - Array of message objects
+        context: JSON (Optional) - Calendar events, user preferences, etc.
+        is_active: Boolean (Default: True)
+        assistant_type: String(50) (Default: 'elevenlabs') - elevenlabs, custom
+        user_profiles_context: JSON (Optional) - Relevant user profiles
+        conversation_history_context: JSON (Optional) - Recent conversations
+        created_at: DateTime (Default: now)
+        updated_at: DateTime (Default: now, Auto-update)
+    """
+    id: Optional[IntegerField] = None
+    session_id: Optional[StringField] = None
+    main_user_id: Optional[IntegerField] = None
+    messages: Optional[JsonField] = None
+    context: Optional[JsonField] = None
+    is_active: Optional[BooleanField] = None
+    assistant_type: Optional[StringField] = None
+    user_profiles_context: Optional[JsonField] = None
+    conversation_history_context: Optional[JsonField] = None
+    created_at: Optional[DateTimeField] = None
+    updated_at: Optional[DateTimeField] = None
 
-class CalendarEvent(Base):
-    """Calendar event model for assistant integration"""
-    __tablename__ = 'calendar_events'
+@dataclass
+class CalendarEvent:
+    """
+    calendar_events table
     
-    id = Column(Integer, primary_key=True)
-    main_user_id = Column(Integer, ForeignKey('main_users.id'), nullable=False)
-    title = Column(String(255), nullable=False)
-    start_time = Column(DateTime, nullable=False)
-    end_time = Column(DateTime)
-    description = Column(Text)
-    location = Column(String(500))
-    calendar_id = Column(String(255))  # Google Calendar ID
-    google_event_id = Column(String(255))
-    status = Column(String(50), default='pending')  # pending, created, failed
-    error_message = Column(Text)
-    
-    # Related to conversation context
-    related_conversation_id = Column(String(36))
-    related_participants = Column(JSON)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    # Relationships
-    main_user_obj = relationship("MainUser", back_populates="calendar_events")
-    
-    # Indexes
-    __table_args__ = (
-        Index('idx_main_user_id', 'main_user_id'),
-        Index('idx_start_time', 'start_time'),
-        Index('idx_status', 'status'),
-        Index('idx_google_event_id', 'google_event_id'),
-    )
+    Fields:
+        id: Integer (Primary Key, Auto-increment)
+        main_user_id: Integer (Foreign Key to main_users.id)
+        title: String(255) (Required)
+        start_time: DateTime (Required)
+        end_time: DateTime (Optional)
+        description: Text (Optional)
+        location: String(500) (Optional)
+        calendar_id: String(255) (Optional) - Google Calendar ID
+        google_event_id: String(255) (Optional)
+        status: String(50) (Default: 'pending') - pending, created, failed
+        error_message: Text (Optional)
+        related_conversation_id: String(36) (Optional)
+        related_participants: JSON (Optional)
+        created_at: DateTime (Default: now)
+        updated_at: DateTime (Default: now, Auto-update)
+    """
+    id: Optional[IntegerField] = None
+    main_user_id: Optional[IntegerField] = None
+    title: Optional[StringField] = None
+    start_time: Optional[DateTimeField] = None
+    end_time: Optional[DateTimeField] = None
+    description: Optional[StringField] = None
+    location: Optional[StringField] = None
+    calendar_id: Optional[StringField] = None
+    google_event_id: Optional[StringField] = None
+    status: Optional[StringField] = None
+    error_message: Optional[StringField] = None
+    related_conversation_id: Optional[StringField] = None
+    related_participants: Optional[JsonField] = None
+    created_at: Optional[DateTimeField] = None
+    updated_at: Optional[DateTimeField] = None
 
-class PlatformIntegration(Base):
-    """Platform integration settings and credentials"""
-    __tablename__ = 'platform_integrations'
+@dataclass
+class PlatformIntegration:
+    """
+    platform_integrations table
     
-    id = Column(Integer, primary_key=True)
-    platform = Column(String(50), nullable=False)  # whatsapp, instagram, discord, etc.
-    main_user_id = Column(Integer, ForeignKey('main_users.id'), nullable=False)
-    is_connected = Column(Boolean, default=False)
-    credentials = Column(JSON)  # Encrypted platform credentials
-    settings = Column(JSON)  # Platform-specific settings
-    last_sync = Column(DateTime)
-    sync_frequency = Column(String(50), default='manual')  # manual, daily, weekly
-    permissions = Column(JSON)  # What data we can access
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    # Relationships
-    main_user_obj = relationship("MainUser", back_populates="platform_integrations")
-    
-    # Indexes
-    __table_args__ = (
-        Index('idx_platform_main_user', 'platform', 'main_user_id'),
-        Index('idx_is_connected', 'is_connected'),
-        Index('idx_last_sync', 'last_sync'),
-    ) 
+    Fields:
+        id: Integer (Primary Key, Auto-increment)
+        platform: String(50) (Required) - whatsapp, instagram, discord, etc.
+        main_user_id: Integer (Foreign Key to main_users.id)
+        is_connected: Boolean (Default: False)
+        credentials: JSON (Optional) - Encrypted platform credentials
+        settings: JSON (Optional) - Platform-specific settings
+        last_sync: DateTime (Optional)
+        sync_frequency: String(50) (Default: 'manual') - manual, daily, weekly
+        permissions: JSON (Optional) - What data we can access
+        created_at: DateTime (Default: now)
+        updated_at: DateTime (Default: now, Auto-update)
+    """
+    id: Optional[IntegerField] = None
+    platform: Optional[StringField] = None
+    main_user_id: Optional[IntegerField] = None
+    is_connected: Optional[BooleanField] = None
+    credentials: Optional[JsonField] = None
+    settings: Optional[JsonField] = None
+    last_sync: Optional[DateTimeField] = None
+    sync_frequency: Optional[StringField] = None
+    permissions: Optional[JsonField] = None
+    created_at: Optional[DateTimeField] = None
+    updated_at: Optional[DateTimeField] = None 
