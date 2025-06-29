@@ -3,7 +3,7 @@ from typing import List, Dict, Any, Optional
 import openai
 from sqlalchemy.testing.config import test_schema_2
 
-from config import Config
+from ..config import Config
 import json
 import re
 

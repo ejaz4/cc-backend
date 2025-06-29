@@ -6,9 +6,9 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 import uuid
 from pydub import AudioSegment
-from config import Config
+from ..config import Config
 
-from database.repository import UserProfileRepository
+from ..database.repository import UserProfileRepository
 
 logger = logging.getLogger(__name__)
 
