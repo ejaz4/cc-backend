@@ -1,6 +1,8 @@
 import logging
 from typing import List, Dict, Any, Optional
 import openai
+from sqlalchemy.testing.config import test_schema_2
+
 from config import Config
 import json
 import re
@@ -26,13 +28,11 @@ class ChatSummarizer:
         Returns:
             Summary data with script lines and context
         """
-        try:
+        
             # Prepare context information
-            # Prepare messages for summarization
-            conversation_text = self._format_conversation(messages)
             
             # Create system prompt with context
-            system_prompt = prompt = f"""You are an expert conversation summarizer for a Gen-Z focused app. Your task is to create engaging, concise summaries of group conversations that capture the key updates and dynamics
+        system_prompt = prompt = f"""You are an expert conversation summarizer for a Gen-Z focused app. Your task is to create engaging, concise summaries of group conversations that capture the key updates and dynamics
 
 Create a summary that:
 1. Captures the most important updates and key points
@@ -98,11 +98,13 @@ Example format with group conversation:
 ]
 
 This summary should be a script in first person from the first person perspective of the sender in the JSON format. The summary should be in the language of the sender. If it is a group conversation then there would be multiple senders so multiple summaries.
-The output format should be JSON like this:
+The first element in the json outputted is the extract which is a summary of the conversation in 1-2 sentences maximum.
+The output format should be always JSON like this:
 
-{{{{sender_name: "", script: ""}}}}, {{{{sender_name: "", script: ""}}}}, ...
+[{{extract: ""}},{{sender_name: script}}, {{sender_name: script}}, ...]
 
 Each script line should be:
+- Convert any slang to its appropriated unabbreviated form .
 - 1–3 sentences maximum
 - Natural and conversational
 - Include the speaker’s name
@@ -111,44 +113,22 @@ Each script line should be:
 """
 
             # Generate summary with OpenAI
-            response = self.client.chat.completions.create(
-                model="gpt-4.1-nano",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Please summarize this conversation:\n\n{conversation_text}"}
-                ],
-                temperature=0.7,
-                max_tokens=2000
-            )
-            
-            # Parse response
-            summary_content = response.choices[0].message.content.strip()
-            
-            # Try to extract JSON from response
-            try:
-                # Look for JSON in the response
-                json_match = re.search(r'\{.*\}', summary_content, re.DOTALL)
-                if json_match:
-                    summary_data = json.loads(json_match.group())
-                else:
-                    # Fallback: create structured response
-                    summary_data = self._create_fallback_summary(summary_content, participants)
-                
-                # Validate and enhance summary data
-                summary_data = self._validate_and_enhance_summary(summary_data, participants, user_contexts)
-                
-                return summary_data
-                
-            except json.JSONDecodeError as e:
-                logger.error(f"Error parsing JSON response: {e}")
-                # Create fallback summary
-                return self._create_fallback_summary(summary_content, participants)
-                
-        except Exception as e:
-            logger.error(f"Error generating summary: {e}")
-            return {'error': str(e)}
+        response = self.client.chat.completions.create(
+            model="gpt-4.1-nano",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Please summarize this conversation:\n\n{data}"}
+            ],
+            temperature=0.7,
+            max_tokens=2000
+        )
+        
+        # Parse response
+        summary_content = response.choices[0].message.content.strip()
+        return summary_content
     
     def generate_summary(self,data):
+
         """
         Generate basic summary (legacy method)
         
@@ -468,7 +448,7 @@ test = [
   {
     "sender": "Keanu Czirjak",
     "content": "what's up guys!!!",
-    "isGroup": true,
+    "isGroup": True,
     "conversationName": "the gang",
     "appId": "com.discord.app",
     "timestamp": 1751167953
@@ -476,7 +456,7 @@ test = [
   {
     "sender": "ejaz. 🐱",
     "content": "yoooo keanu",
-    "isGroup": true,
+    "isGroup": True,
     "conversationName": "the gang",
     "appId": "com.discord.app",
     "timestamp": 1751167980
@@ -484,9 +464,35 @@ test = [
    {
     "sender": "MansaGeekz",
     "content": "wsg g",
-    "isGroup": true,
+    "isGroup": True,
     "conversationName": "the gang",
     "appId": "com.discord.app",
+    "timestamp": 1751167980
+  }
+]
+test2 = [
+  {
+    "sender": "Keanu Czirjak",
+    "content": "How are you",
+    "isGroup": False,
+    "conversationName": "Keanu Czirjak",
+    "appId": "com.whatsapp.app",
+    "timestamp": 1751167953
+  },
+  {
+    "sender": "Keanu Czirjak",
+    "content": "I am in london this week",
+    "isGroup": False,
+    "conversationName": "Keanu Czirjak",
+    "appId": "com.whatsapp.app",
+    "timestamp": 1751167980
+  },
+  {
+    "sender": "Keanu Czirjak",
+    "content": "let me know if i can see you soon",
+    "isGroup": False,
+    "conversationName": "Keanu Czirjak",
+    "appId": "com.whatsapp.app",
     "timestamp": 1751167980
   }
 ]

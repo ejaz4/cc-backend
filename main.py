@@ -1,62 +1,37 @@
-#!/usr/bin/env python3
-# /// script
-# requires-python = ">=3.13"
-# dependencies = []
-# ///
-"""
-Main entry point for the FastAPI application
-"""
+from typing import List, Dict
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from .services.summarizer import ChatSummarizer
+from .services.elevenlabs_service import ElevenLabsService
+from .services.mediaupload import MediaUpload
+# ----- Models -----
+class Conversation(BaseModel):
+    messages: List[Dict]
 
-import os
-import sys
-import logging
-from pathlib import Path
+class Summary(BaseModel):
+    summary: str
 
-# Add the project root to the Python path
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
-
-from app import app
-from config import Config
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+# ----- FastAPI Setup -----
+app = FastAPI(
+    title="Chat Summarizer API",
+    version="1.0.0",
+    description="Summarizes a conversation into a concise summary."
 )
-logger = logging.getLogger(__name__)
 
-def main():
-    """Main application entry point"""
+@app.post("/summarize", response_model=Summary)
+async def summarize_conversation(conversation: Conversation):
     try:
-        # Validate configuration
-        Config.validate_config()
-        logger.info("Configuration validated successfully")
-        
-        # Get configuration
-        host = Config.HOST
-        port = Config.PORT
-        debug = Config.DEBUG
-        
-        logger.info(f"Starting FastAPI application on {host}:{port}")
-        logger.info(f"Debug mode: {debug}")
-        logger.info(f"API documentation available at: http://{host}:{port}/docs")
-        
-        # Import uvicorn here to avoid issues with multiprocessing
-        import uvicorn
-        
-        # Run the application
-        uvicorn.run(
-            "app:app",
-            host=host,
-            port=port,
-            reload=debug,
-            log_level="info" if not debug else "debug"
-        )
-        
-    except Exception as e:
-        logger.error(f"Failed to start application: {e}")
-        sys.exit(1)
+        session = ChatSummarizer()
+        summary = session.generate_summary(conversation)
+        eleven = ElevenLabsService()
+        paths= eleven.master(summary)
+        MediaUpload.upload(paths)
+        return paths
 
-if __name__ == "__main__":
-    main() 
+    except Exception as e:
+        # you can refine exception handling as needed
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/")
+async def root():
+    return {"status": "ok"}

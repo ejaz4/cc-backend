@@ -8,6 +8,8 @@ class Config:
     """Configuration class for the application"""
     
     # FastAPI Configuration
+    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+    OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4')
     DEBUG = os.getenv('FASTAPI_DEBUG', 'False').lower() == 'true'
     HOST = os.getenv('FASTAPI_HOST', '0.0.0.0')
     PORT = int(os.getenv('FASTAPI_PORT', 8000))
@@ -27,19 +29,14 @@ class Config:
     
     # API Keys
     ELEVENLABS_API_KEY = os.getenv('ELEVENLABS_API_KEY')
-    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-    
-    # Google Calendar Configuration (Optional)
-    GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
-    GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
-    GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:8000/api/assistant/calendar/callback')
+
     
     # File Storage Configuration
     UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', 'uploads')
     AUDIO_FOLDER = os.getenv('AUDIO_FOLDER', 'audio')
     
     # OpenAI Configuration
-    OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4')
+
     
     # ElevenLabs Configuration
     ELEVENLABS_BASE_URL = os.getenv('ELEVENLABS_BASE_URL', 'https://api.elevenlabs.io/v1')

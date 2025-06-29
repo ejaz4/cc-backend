@@ -131,11 +131,11 @@ async def upload_conversation_file(
         logger.error(f"Error uploading conversation file: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/{session_id}/summarize")
-async def summarize_conversation(session_id: str, conversation)
+@router.post("/summarize")
+async def summarize_conversation(conversation):
     session = ChatSummarizer()
     summary = session.generate_summary(conversation)
-    
+    return summary
 
 #
         

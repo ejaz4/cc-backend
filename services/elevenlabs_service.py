@@ -5,7 +5,7 @@ import json
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 import uuid
-
+from pydub import AudioSegment
 from config import Config
 
 from database.repository import UserProfileRepository
@@ -24,6 +24,13 @@ class ElevenLabsService:
             "xi-api-key": self.api_key
         }
         self.user_profile_repo = UserProfileRepository()
+        self.SPEAKER_VOICE_IDS = {
+            "viraj": "Ext7H3eEv8VE8fllrG5V",
+                             "akshith": "5AoQXpmMtIJan2CwtAOc",
+                             "lakshan": "umz7RhlNzd4xcAqREdXt",
+                             "keanu czirjak": "bFzANtxrZVStytIgIj6n",
+                             "ejaz": "4EzftP6bvnPeQhye9MOz",
+                            "narrator": "EXAVITQu4vr4xnSDxMaL"}
 
     def get_available_voices(self) -> List[str]:
         """Get list of available ElevenLabs voices"""
@@ -31,7 +38,7 @@ class ElevenLabsService:
             response = requests.get(f"{self.base_url}/voices", headers=self.headers)
             response.raise_for_status()
 
-            # voices_data = response.json()
+            # voices_data = response.json() forget this
             voices = {"Viraj": "Ext7H3eEv8VE8fllrG5V",
                       "Akshith": "5AoQXpmMtIJan2CwtAOc",
                       "Lakshan": "umz7RhlNzd4xcAqREdXt",
@@ -320,28 +327,7 @@ class ElevenLabsService:
         except Exception as e:
             logger.error(f"Error cloning voice: {e}")
             return None
-    
-    def delete_voice(self, voice_id: str) -> bool:
-        """
-        Delete a cloned voice
-        
-        Args:
-            voice_id: Voice ID to delete
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            response = requests.delete(
-                f"{self.base_url}/voices/{voice_id}",
-                headers=self.headers
-            )
-            response.raise_for_status()
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error deleting voice: {e}")
-            return False
+
     
     def get_voice_info(self, voice_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -447,25 +433,86 @@ class ElevenLabsService:
             logger.error(f"Error getting user voice preferences: {e}")
             return {}
 
+    def generate_voice_audio(self, text, voice_id, output_path):
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
-""""        
-from dotenv import load_dotenv
-from elevenlabs.client import ElevenLabs
-from elevenlabs import play
+        headers = {
+            "xi-api-key": self.api_key,
+            "Content-Type": "application/json"
+        }
 
-load_dotenv()
+        payload = {
+            "text": text,
+            "model_id": "eleven_monolingual_v1",
+            "voice_settings": {
+                "stability": 0.5,
+                "similarity_boost": 0.75
+            }
+        }
 
-elevenlabs = ElevenLabs(
-  api_key=os.getenv("ELEVENLABS_API_KEY"),
-)
+        response = requests.post(url, json=payload, headers=headers)
 
-audio = elevenlabs.text_to_speech.convert(
-    text="The first move is what sets everything in motion.",
-    voice_id="JBFqnCBsd6RMkjVDRZzb",
-    model_id="eleven_multilingual_v2",
-    output_format="mp3_44100_128",
-)
+        if response.status_code == 200:
+            with open(output_path, "wb") as f:
+                f.write(response.content)
+        else:
+            raise Exception(f"Error: {response.status_code}, {response.text}")
 
-play(audio)
+    def create_groupchat_audio(self, convo_json, final_output="groupchat_output.mp3"):
+        audio_segments = []
 
-"""
+        for entry in convo_json:
+            speaker = entry["sender_name"]
+            text = entry["script"]
+            voice_id = self.SPEAKER_VOICE_IDS.get(speaker.lower())
+
+            if not voice_id:
+                raise ValueError(f"No voice ID mapped for speaker: {speaker}")
+
+            temp_file = f"temp_{uuid.uuid4()}.mp3"
+            self.generate_voice_audio(text, voice_id, temp_file)
+            segment = AudioSegment.from_mp3(temp_file)
+            audio_segments.append(segment)
+            os.remove(temp_file)
+
+        combined = sum(audio_segments[1:], audio_segments[0])  # Concatenate all
+        combined.export(final_output, format="mp3")
+        print(f"Generated audio file: {final_output}")
+
+    def master(self, summarised_json):
+        output_files = []
+
+        # Step 1: Generate narrator extract audio
+        extract_text = summarised_json[0].get("extract")
+        narrator_voice_id = self.SPEAKER_VOICE_IDS.get("narrator")
+
+        if not narrator_voice_id:
+            raise ValueError("Narrator voice ID not configured.")
+
+        extract_file = f"narrator_{uuid.uuid4()}.mp3"
+        self.generate_voice_audio(extract_text, narrator_voice_id, extract_file)
+        output_files.append(extract_file)
+
+        # Step 2: Generate chat message audios
+        for entry in summarised_json[1:]:
+            speaker = entry["sender_name"]
+            text = entry["script"]
+            voice_id = self.SPEAKER_VOICE_IDS.get(speaker.lower())
+
+            if not voice_id:
+                raise ValueError(f"No voice ID mapped for speaker: {speaker}")
+
+            temp_file = f"{speaker.lower()}_{uuid.uuid4()}.mp3"
+            self.generate_voice_audio(text, voice_id, temp_file)
+            output_files.append(temp_file)
+
+        return output_files
+
+
+eserv = ElevenLabsService()
+eserv.master([
+  { "extract": "Keanu starts the chat hyped, asking everyone what's up, and Ejaz and Mansa reply back with their usual chill vibes. They’re just catching up and keeping it casual." },
+  { "sender_name": "Keanu Czirjak", "script": "Hey guys! What's up!!! I'm just here vibing and checking in with y'all." },
+  { "sender_name": "ejaz", "script": "Yoooo Keanu! Just chillin, what's good with you?" },
+  { "sender_name": "akshith", "script": "Wsup g! Nothing much, just vibing here. What's new?" }
+])
