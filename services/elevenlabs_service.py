@@ -464,10 +464,7 @@ class ElevenLabsService:
         for entry in convo_json:
             speaker = entry["sender_name"]
             text = entry["script"]
-            voice_id = self.SPEAKER_VOICE_IDS.get(speaker.lower())
-
-            if not voice_id:
-                raise ValueError(f"No voice ID mapped for speaker: {speaker}")
+            voice_id = self.SPEAKER_VOICE_IDS.get(speaker.lower(), "EXAVITQu4vr4xnSDxMaL")
 
             temp_file = f"temp_{uuid.uuid4()}.mp3"
             self.generate_voice_audio(text, voice_id, temp_file)
@@ -495,14 +492,11 @@ class ElevenLabsService:
 
         # Step 2: Generate chat message audios
         for entry in summarised_json[1:]:
-            speaker = entry["sender_name"]
-            text = entry["script"]
-            voice_id = self.SPEAKER_VOICE_IDS.get(speaker.lower())
+            speaker, text = next(iter(entry.items()))
 
-            if not voice_id:
-                raise ValueError(f"No voice ID mapped for speaker: {speaker}")
-
-            temp_file = f"{speaker.lower()}_{uuid.uuid4()}.mp3"
+            voice_id = self.SPEAKER_VOICE_IDS.get(speaker.lower(), "EXAVITQu4vr4xnSDxMaL")
+            s = speaker.lower().replace(" ", "_")
+            temp_file = f"{s}_{uuid.uuid4()}.mp3"
             self.generate_voice_audio(text, voice_id, temp_file)
             output_files.append(temp_file)
 
@@ -510,9 +504,7 @@ class ElevenLabsService:
 
 
 eserv = ElevenLabsService()
-eserv.master([
-  { "extract": "Keanu starts the chat hyped, asking everyone what's up, and Ejaz and Mansa reply back with their usual chill vibes. They’re just catching up and keeping it casual." },
-  { "sender_name": "Keanu Czirjak", "script": "Hey guys! What's up!!! I'm just here vibing and checking in with y'all." },
-  { "sender_name": "ejaz", "script": "Yoooo Keanu! Just chillin, what's good with you?" },
-  { "sender_name": "akshith", "script": "Wsup g! Nothing much, just vibing here. What's new?" }
-])
+eserv.master([{"extract": "Keanu started the chat by checking in with everyone, and Ejaz and Mansa responded with energy, keeping the vibe lively."},
+{"Keanu Czirjak": "Hey guys! Just wanted to see how everyone's doing. Hope you're all good!"},
+{"ejaz": "Yooo Keanu, what's good!"},
+{"MansaGeekz": "Wassup guys! All good here, just chillin'."}])

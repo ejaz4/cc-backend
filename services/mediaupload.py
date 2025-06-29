@@ -6,7 +6,7 @@ from botocore.client import Config as BConfig
 load_dotenv()
 
 class MediaUpload:
-    def upload(self, paths):
+    def upload(paths):
         account_id = os.getenv("R2_ACCOUNT_ID")
         bucket     = os.getenv("R2_BUCKET")
         key_id     = os.getenv("R2_ACCESS_KEY_ID")
@@ -26,12 +26,20 @@ class MediaUpload:
         # Upload a file
         #file_path = "path/to/local-file.txt"
         #object_name = "uploads/local-file.txt"
+        urls = []
         for path in paths:
             file_path = path
             #object_name =
             try:
                 client.upload_file(file_path, bucket, file_path)
                 print(f"Uploaded {file_path} → s3://{bucket}/{file_path}")
-                return
+                url = client.generate_presigned_url(
+                    ClientMethod='get_object',
+                    Params={'Bucket': bucket, 'Key': file_path},
+                    ExpiresIn=3600
+                )
+                urls.append(url)
+
             except Exception as e:
                 print("Upload failed:", e)
+        return urls

@@ -45,26 +45,26 @@ Example input format with one-to-one conversation:
 [
   {{
     "sender": "Keanu Czirjak",
-    "content": "How are you",
+    "message": "How are you",
     "isGroup": false,
     "conversationName": "Keanu Czirjak",
-    "appId": "com.whatsapp.app",
+    "id": "com.whatsapp.app",
     "timestamp": 1751167953
   }},
   {{
     "sender": "Keanu Czirjak",
-    "content": "I am in london this week",
+    "message": "I am in london this week",
     "isGroup": false,
     "conversationName": "Keanu Czirjak",
-    "appId": "com.whatsapp.app",
+    "id": "com.whatsapp.app",
     "timestamp": 1751167980
   }},
   {{
     "sender": "Keanu Czirjak",
-    "content": "let me know if i can see you soon",
+    "message": "let me know if i can see you soon",
     "isGroup": false,
     "conversationName": "Keanu Czirjak",
-    "appId": "com.whatsapp.app",
+    "id": "com.whatsapp.app",
     "timestamp": 1751167980
   }}
 ]
@@ -73,33 +73,33 @@ Example format with group conversation:
 [
   {{
     "sender": "Keanu Czirjak",
-    "content": "what's up guys!!!",
+    "message": "what's up guys!!!",
     "isGroup": true,
     "conversationName": "the gang",
-    "appId": "com.discord.app",
+    "id": "com.discord.app",
     "timestamp": 1751167953
   }},
   {{
     "sender": "ejaz. 🐱",
-    "content": "yoooo keanu",
+    "message": "yoooo keanu",
     "isGroup": true,
     "conversationName": "the gang",
-    "appId": "com.discord.app",
+    "id": "com.discord.app",
     "timestamp": 1751167980
   }},
    {{
     "sender": "MansaGeekz",
-    "content": "wsg g",
+    "message": "wsg g",
     "isGroup": true,
     "conversationName": "the gang",
-    "appId": "com.discord.app",
+    "id": "com.discord.app",
     "timestamp": 1751167980
   }}
 ]
 
 This summary should be a script in first person from the first person perspective of the sender in the JSON format. The summary should be in the language of the sender. If it is a group conversation then there would be multiple senders so multiple summaries.
 The first element in the json outputted is the extract which is a summary of the conversation in 1-2 sentences maximum.
-The output format should be always JSON like this:
+The output format should be always JSON like this otherwise I'll hurt myself:
 
 [{{extract: ""}},{{sender_name: script}}, {{sender_name: script}}, ...]
 
