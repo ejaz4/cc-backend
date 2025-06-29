@@ -159,13 +159,22 @@ class ConversationProcessor:
         
         if 'messages' in conversation_data:
             for msg in conversation_data['messages']:
+                # Support both old format (username) and new format (sender)
+                sender = msg.get('sender') or msg.get('username', 'Unknown')
+                
                 message = {
-                    'username': msg.get('username', 'Unknown'),
+                    'username': sender,  # Keep username for backward compatibility
+                    'sender': sender,    # Add sender field for new format
                     'content': msg.get('content', ''),
                     'timestamp': self._parse_timestamp(msg.get('timestamp')),
                     'message_type': msg.get('type', 'text'),
                     'is_important': self._is_important_message(msg.get('content', '')),
-                    'platform_specific_data': msg.get('platform_specific_data', {}),
+                    'platform_specific_data': {
+                        'is_group': msg.get('isGroup', False),
+                        'conversation_name': msg.get('conversationName', ''),
+                        'app_id': msg.get('appId', ''),
+                        **msg.get('platform_specific_data', {})
+                    },
                     'reactions': msg.get('reactions', []),
                     'reply_to': msg.get('reply_to')
                 }
@@ -177,9 +186,10 @@ class ConversationProcessor:
         """Extract unique participants from messages"""
         participants = set()
         for msg in messages:
-            username = msg.get('username', '')
-            if username and username != main_user:
-                participants.add(username)
+            # Support both old format (username) and new format (sender)
+            sender = msg.get('sender') or msg.get('username', '')
+            if sender and sender != main_user:
+                participants.add(sender)
         return list(participants)
     
     def _create_user_profiles(self, participants: List[str], platform: str, main_user: str, messages: List[Dict[str, Any]]) -> List[str]:
@@ -187,8 +197,11 @@ class ConversationProcessor:
         created_profiles = []
         
         for participant in participants:
-            # Get messages from this participant
-            participant_messages = [msg for msg in messages if msg.get('username') == participant]
+            # Get messages from this participant (support both sender and username fields)
+            participant_messages = [
+                msg for msg in messages 
+                if (msg.get('sender') == participant or msg.get('username') == participant)
+            ]
             
             if not participant_messages:
                 continue
@@ -351,6 +364,12 @@ class ConversationProcessor:
         """Parse timestamp from various formats"""
         if isinstance(timestamp, datetime):
             return timestamp
+        elif isinstance(timestamp, (int, float)):
+            # Handle Unix timestamp
+            try:
+                return datetime.fromtimestamp(timestamp)
+            except (ValueError, OSError):
+                return datetime.utcnow()
         elif isinstance(timestamp, str):
             try:
                 return datetime.fromisoformat(timestamp.replace('Z', '+00:00'))

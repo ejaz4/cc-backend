@@ -214,6 +214,70 @@ Content-Type: application/json
   "conversation_type": "group",
   "messages": [
     {
+      "sender": "mom",
+      "content": "Hey everyone! How's your day going?",
+      "isGroup": true,
+      "conversationName": "Family Group",
+      "appId": "com.whatsapp.app",
+      "timestamp": 1751167953
+    }
+  ]
+}
+```
+
+**New JSON Format (Recommended):**
+```json
+{
+  "platform": "whatsapp",
+  "main_user": "john_doe",
+  "group_name": "Keanu Czirjak",
+  "conversation_type": "individual",
+  "messages": [
+    {
+      "sender": "Keanu Czirjak",
+      "content": "How are you",
+      "isGroup": false,
+      "conversationName": "Keanu Czirjak",
+      "appId": "com.whatsapp.app",
+      "timestamp": 1751167953
+    },
+    {
+      "sender": "Keanu Czirjak",
+      "content": "I am in london this week",
+      "isGroup": false,
+      "conversationName": "Keanu Czirjak",
+      "appId": "com.whatsapp.app",
+      "timestamp": 1751167980
+    },
+    {
+      "sender": "Keanu Czirjak",
+      "content": "let me know if i can see you soon",
+      "isGroup": false,
+      "conversationName": "Keanu Czirjak",
+      "appId": "com.whatsapp.app",
+      "timestamp": 1751167980
+    }
+  ]
+}
+```
+
+**Message Format Fields:**
+- `sender`: The name/username of the message sender
+- `content`: The message text content
+- `isGroup`: Boolean indicating if this is a group conversation
+- `conversationName`: Name of the conversation/group
+- `appId`: Platform-specific app identifier (e.g., "com.whatsapp.app")
+- `timestamp`: Unix timestamp of the message (integer)
+
+**Legacy Format (Still Supported):**
+```json
+{
+  "platform": "whatsapp",
+  "main_user": "john_doe",
+  "group_name": "Family Group",
+  "conversation_type": "group",
+  "messages": [
+    {
       "username": "mom",
       "content": "Hey everyone! How's your day going?",
       "timestamp": "2024-01-15T10:30:00Z",
