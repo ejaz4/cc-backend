@@ -34,9 +34,7 @@ class ChatSummarizer:
             conversation_text = self._format_conversation(messages)
             
             # Create system prompt with context
-            system_prompt = f"""You are an expert conversation summarizer for a Gen-Z focused app. Your task is to create engaging, concise summaries of group conversations that capture the key updates and dynamics.
-
-{context_prompt}
+            system_prompt = f"""You are an expert conversation summarizer for a Gen-Z focused app. Your task is to create engaging, concise summaries of group conversations that capture the key updates and dynamics
 
 Create a summary that:
 1. Captures the most important updates and key points
@@ -49,9 +47,7 @@ Format your response as a JSON object with:
 - summary_text: A brief overview paragraph
 - script_lines: Array of dialogue lines for TTS generation
 - participants: List of participants involved
-- personality_context: How personalities influenced the summary
-- relationship_context: Key relationship dynamics
-- tone_analysis: Overall conversation tone and mood
+- tone_analysis: Overall conversation tone an
 - word_count: Total word count of script lines
 
 Each script line should be:
@@ -77,7 +73,7 @@ Example format:
 
             # Generate summary with OpenAI
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4.1-nano",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"Please summarize this conversation:\n\n{conversation_text}"}
@@ -128,55 +124,55 @@ Example format:
         empty_contexts = {participant: {} for participant in participants}
         return self.generate_summary_with_context(messages, participants, empty_contexts)
     
-    def _build_context_prompt(self, participants: List[str], user_contexts: Dict[str, Any]) -> str:
-        """Build context prompt from user profiles and relationship data"""
-        context_parts = []
+    # def _build_context_prompt(self, participants: List[str], user_contexts: Dict[str, Any]) -> str:
+    #     """Build context prompt from user profiles and relationship data"""
+    #     context_parts = []
         
-        for participant, context in user_contexts.items():
-            if not context:
-                continue
+    #     for participant, context in user_contexts.items():
+    #         if not context:
+    #             continue
                 
-            profile = context.get('profile', {})
-            relationship_type = context.get('relationship_type', 'friend')
-            personality_traits = context.get('personality_traits', [])
-            interests = context.get('interests', [])
-            trust_score = context.get('trust_score', 0.5)
+    #         profile = context.get('profile', {})
+    #         relationship_type = context.get('relationship_type', 'friend')
+    #         personality_traits = context.get('personality_traits', [])
+    #         interests = context.get('interests', [])
+    #         trust_score = context.get('trust_score', 0.5)
             
-            context_part = f"\n{participant}:"
-            context_part += f"\n- Relationship: {relationship_type}"
+    #         context_part = f"\n{participant}:"
+    #         context_part += f"\n- Relationship: {relationship_type}"
             
-            if personality_traits:
-                context_part += f"\n- Personality: {', '.join(personality_traits)}"
+    #         if personality_traits:
+    #             context_part += f"\n- Personality: {', '.join(personality_traits)}"
             
-            if interests:
-                context_part += f"\n- Interests: {', '.join(interests)}"
+    #         if interests:
+    #             context_part += f"\n- Interests: {', '.join(interests)}"
             
-            context_part += f"\n- Trust level: {trust_score:.1f}/1.0"
+    #         context_part += f"\n- Trust level: {trust_score:.1f}/1.0"
             
-            # Add communication style if available
-            if profile.get('communication_style'):
-                style = profile['communication_style']
-                style_desc = []
-                if style.get('emoji_heavy'):
-                    style_desc.append('uses many emojis')
-                if style.get('formal'):
-                    style_desc.append('formal language')
-                if style.get('casual'):
-                    style_desc.append('casual language')
-                if style.get('question_heavy'):
-                    style_desc.append('asks many questions')
-                if style.get('exclamation_heavy'):
-                    style_desc.append('uses many exclamations')
+    #         # Add communication style if available
+    #         if profile.get('communication_style'):
+    #             style = profile['communication_style']
+    #             style_desc = []
+    #             if style.get('emoji_heavy'):
+    #                 style_desc.append('uses many emojis')
+    #             if style.get('formal'):
+    #                 style_desc.append('formal language')
+    #             if style.get('casual'):
+    #                 style_desc.append('casual language')
+    #             if style.get('question_heavy'):
+    #                 style_desc.append('asks many questions')
+    #             if style.get('exclamation_heavy'):
+    #                 style_desc.append('uses many exclamations')
                 
-                if style_desc:
-                    context_part += f"\n- Communication style: {', '.join(style_desc)}"
+    #             if style_desc:
+    #                 context_part += f"\n- Communication style: {', '.join(style_desc)}"
             
-            context_parts.append(context_part)
+    #         context_parts.append(context_part)
         
-        if context_parts:
-            return "User Context:\n" + "\n".join(context_parts)
-        else:
-            return "No specific user context available."
+    #     if context_parts:
+    #         return "User Context:\n" + "\n".join(context_parts)
+    #     else:
+    #         return "No specific user context available."
     
     def _format_conversation(self, messages: List[Dict[str, Any]]) -> str:
         """Format conversation messages for summarization"""
@@ -288,53 +284,53 @@ Example format:
         
         return summary_data
     
-    def analyze_conversation_tone(self, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Analyze the overall tone and mood of a conversation"""
-        try:
-            # Extract conversation text
-            conversation_text = self._format_conversation(messages)
+    # def analyze_conversation_tone(self, messages: List[Dict[str, Any]]) -> Dict[str, Any]:
+    #     """Analyze the overall tone and mood of a conversation"""
+    #     try:
+    #         # Extract conversation text
+    #         conversation_text = self._format_conversation(messages)
             
-            # Analyze with OpenAI
-            response = self.client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "Analyze the tone and mood of this conversation. Return a JSON object with: overall_tone (positive/negative/neutral), emotional_indicators (list of emotions detected), engagement_level (high/medium/low), and key_themes (list of main topics)."},
-                    {"role": "user", "content": conversation_text}
-                ],
-                temperature=0.3,
-                max_tokens=500
-            )
+    #         # Analyze with OpenAI
+    #         response = self.client.chat.completions.create(
+    #             model="gpt-4",
+    #             messages=[
+    #                 {"role": "system", "content": "Analyze the tone and mood of this conversation. Return a JSON object with: overall_tone (positive/negative/neutral), emotional_indicators (list of emotions detected), engagement_level (high/medium/low), and key_themes (list of main topics)."},
+    #                 {"role": "user", "content": conversation_text}
+    #             ],
+    #             temperature=0.3,
+    #             max_tokens=500
+    #         )
             
-            analysis_content = response.choices[0].message.content.strip()
+    #         analysis_content = response.choices[0].message.content.strip()
             
-            try:
-                # Try to parse JSON response
-                json_match = re.search(r'\{.*\}', analysis_content, re.DOTALL)
-                if json_match:
-                    return json.loads(json_match.group())
-                else:
-                    return {
-                        'overall_tone': 'neutral',
-                        'emotional_indicators': [],
-                        'engagement_level': 'medium',
-                        'key_themes': []
-                    }
-            except json.JSONDecodeError:
-                return {
-                    'overall_tone': 'neutral',
-                    'emotional_indicators': [],
-                    'engagement_level': 'medium',
-                    'key_themes': []
-                }
+    #         try:
+    #             # Try to parse JSON response
+    #             json_match = re.search(r'\{.*\}', analysis_content, re.DOTALL)
+    #             if json_match:
+    #                 return json.loads(json_match.group())
+    #             else:
+    #                 return {
+    #                     'overall_tone': 'neutral',
+    #                     'emotional_indicators': [],
+    #                     'engagement_level': 'medium',
+    #                     'key_themes': []
+    #                 }
+    #         except json.JSONDecodeError:
+    #             return {
+    #                 'overall_tone': 'neutral',
+    #                 'emotional_indicators': [],
+    #                 'engagement_level': 'medium',
+    #                 'key_themes': []
+    #             }
                 
-        except Exception as e:
-            logger.error(f"Error analyzing conversation tone: {e}")
-            return {
-                'overall_tone': 'neutral',
-                'emotional_indicators': [],
-                'engagement_level': 'medium',
-                'key_themes': []
-            }
+    #     except Exception as e:
+    #         logger.error(f"Error analyzing conversation tone: {e}")
+    #         return {
+    #             'overall_tone': 'neutral',
+    #             'emotional_indicators': [],
+    #             'engagement_level': 'medium',
+    #             'key_themes': []
+    #         }
     
     def extract_key_updates(self, messages: List[Dict[str, Any]]) -> List[str]:
         """Extract key updates and important information from messages"""
