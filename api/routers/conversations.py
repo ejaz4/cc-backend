@@ -34,6 +34,7 @@ from api.dependencies import (
     SummarizerService,
     ElevenLabsService
 )
+from api.services.summarizer import ChatSummarizer
 from config import Config
 
 logger = logging.getLogger(__name__)
@@ -130,68 +131,57 @@ async def upload_conversation_file(
         logger.error(f"Error uploading conversation file: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/{session_id}/summarize", response_model=SummaryResponse)
-async def summarize_conversation(
-    session_id: str,
-    request: SummaryRequest,
-    conversation_repo = ConversationRepo,
-    summary_repo = SummaryRepo,
-    conversation_processor = ConversationProcessorService,
-    summarizer = SummarizerService
-):
-    """Generate summary for a conversation session"""
-    try:
-        # Get conversation session
-        conversation_session = conversation_repo.find_by_session_id(session_id)
-        if not conversation_session:
-            raise HTTPException(status_code=404, detail="Conversation session not found")
+@router.post("/{session_id}/summarize")
+async def summarize_conversation(session_id: str, conversation)
+    session = ChatSummarizer()
+    summary = session.generate_summary(conversation)
+    
+
+#
         
-        # Update status to processing
-        conversation_repo.update_status(session_id, 'processing')
+        # # Get user profiles for context
+        # participants = conversation_session.get('participants', [])
+        # main_user = conversation_session['main_user']
+        # platform = conversation_session['platform']
         
-        # Get user profiles for context
-        participants = conversation_session.get('participants', [])
-        main_user = conversation_session['main_user']
-        platform = conversation_session['platform']
+        # # Get user context for better summarization
+        # user_contexts = {}
+        # for participant in participants:
+        #     context = conversation_processor.get_user_context(main_user, participant, platform)
+        #     user_contexts[participant] = context
         
-        # Get user context for better summarization
-        user_contexts = {}
-        for participant in participants:
-            context = conversation_processor.get_user_context(main_user, participant, platform)
-            user_contexts[participant] = context
+        # # Generate summary with context
+        # summary_data = summarizer.generate_summary_with_context(
+        #     conversation_session['messages'],
+        #     participants,
+        #     user_contexts
+        # )
         
-        # Generate summary with context
-        summary_data = summarizer.generate_summary_with_context(
-            conversation_session['messages'],
-            participants,
-            user_contexts
-        )
+        # if 'error' in summary_data:
+        #     conversation_repo.update_status(session_id, 'failed')
+        #     raise HTTPException(status_code=500, detail=summary_data['error'])
         
-        if 'error' in summary_data:
-            conversation_repo.update_status(session_id, 'failed')
-            raise HTTPException(status_code=500, detail=summary_data['error'])
+        # # Save summary
+        # summary_data['session_id'] = session_id
+        # summary_data['main_user'] = main_user
+        # summary_id = summary_repo.create(summary_data)
         
-        # Save summary
-        summary_data['session_id'] = session_id
-        summary_data['main_user'] = main_user
-        summary_id = summary_repo.create(summary_data)
+        # # Update conversation session status
+        # conversation_repo.update_status(session_id, 'summarized')
         
-        # Update conversation session status
-        conversation_repo.update_status(session_id, 'summarized')
+        # # Get the created summary
+        # summary = summary_repo.find_by_id(summary_id)
+        # if not summary:
+        #     raise HTTPException(status_code=500, detail="Failed to retrieve created summary")
         
-        # Get the created summary
-        summary = summary_repo.find_by_id(summary_id)
-        if not summary:
-            raise HTTPException(status_code=500, detail="Failed to retrieve created summary")
+        # return SummaryResponse(**summary)
         
-        return SummaryResponse(**summary)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error summarizing conversation: {e}")
-        conversation_repo.update_status(session_id, 'failed')
-        raise HTTPException(status_code=500, detail=str(e))
+    # except HTTPException:
+    #     raise
+    # except Exception as e:
+    #     logger.error(f"Error summarizing conversation: {e}")
+    #     conversation_repo.update_status(session_id, 'failed')
+    #     raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/{session_id}/generate-audio", response_model=AudioFileListResponse)
 async def generate_audio(

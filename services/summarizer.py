@@ -14,7 +14,7 @@ class ChatSummarizer:
     def __init__(self):
         self.client = openai.OpenAI(api_key=Config.OPENAI_API_KEY)
     
-    def generate_summary_with_context(self, messages: List[Dict[str, Any]], participants: List[str], user_contexts: Dict[str, Any]) -> Dict[str, Any]:
+    def generate_summary_with_context(self, data):
         """
         Generate summary with personality and relationship context
         
@@ -28,13 +28,11 @@ class ChatSummarizer:
         """
         try:
             # Prepare context information
-            context_prompt = self._build_context_prompt(participants, user_contexts)
-            
             # Prepare messages for summarization
             conversation_text = self._format_conversation(messages)
             
             # Create system prompt with context
-            system_prompt = f"""You are an expert conversation summarizer for a Gen-Z focused app. Your task is to create engaging, concise summaries of group conversations that capture the key updates and dynamics
+            system_prompt = prompt = f"""You are an expert conversation summarizer for a Gen-Z focused app. Your task is to create engaging, concise summaries of group conversations that capture the key updates and dynamics
 
 Create a summary that:
 1. Captures the most important updates and key points
@@ -43,33 +41,74 @@ Create a summary that:
 4. Is engaging and easy to listen to as audio
 5. Focuses on actionable information and social updates
 
-Format your response as a JSON object with:
-- summary_text: A brief overview paragraph
-- script_lines: Array of dialogue lines for TTS generation
-- participants: List of participants involved
-- tone_analysis: Overall conversation tone an
-- word_count: Total word count of script lines
+Example input format with one-to-one conversation:
+[
+  {{
+    "sender": "Keanu Czirjak",
+    "content": "How are you",
+    "isGroup": false,
+    "conversationName": "Keanu Czirjak",
+    "appId": "com.whatsapp.app",
+    "timestamp": 1751167953
+  }},
+  {{
+    "sender": "Keanu Czirjak",
+    "content": "I am in london this week",
+    "isGroup": false,
+    "conversationName": "Keanu Czirjak",
+    "appId": "com.whatsapp.app",
+    "timestamp": 1751167980
+  }},
+  {{
+    "sender": "Keanu Czirjak",
+    "content": "let me know if i can see you soon",
+    "isGroup": false,
+    "conversationName": "Keanu Czirjak",
+    "appId": "com.whatsapp.app",
+    "timestamp": 1751167980
+  }}
+]
+
+Example format with group conversation:
+[
+  {{
+    "sender": "Keanu Czirjak",
+    "content": "what's up guys!!!",
+    "isGroup": true,
+    "conversationName": "the gang",
+    "appId": "com.discord.app",
+    "timestamp": 1751167953
+  }},
+  {{
+    "sender": "ejaz. 🐱",
+    "content": "yoooo keanu",
+    "isGroup": true,
+    "conversationName": "the gang",
+    "appId": "com.discord.app",
+    "timestamp": 1751167980
+  }},
+   {{
+    "sender": "MansaGeekz",
+    "content": "wsg g",
+    "isGroup": true,
+    "conversationName": "the gang",
+    "appId": "com.discord.app",
+    "timestamp": 1751167980
+  }}
+]
+
+This summary should be a script in first person from the first person perspective of the sender in the JSON format. The summary should be in the language of the sender. If it is a group conversation then there would be multiple senders so multiple summaries.
+The output format should be JSON like this:
+
+{{{{sender_name: "", script: ""}}}}, {{{{sender_name: "", script: ""}}}}, ...
 
 Each script line should be:
-- 1-2 sentences maximum
+- 1–3 sentences maximum
 - Natural and conversational
-- Include the speaker's name
+- Include the speaker’s name
 - Capture their personality and communication style
 - Focus on key updates or important points
-
-Example format:
-{{
-    "summary_text": "Brief overview...",
-    "script_lines": [
-        "{{speaker}}: {{content}}",
-        "{{speaker}}: {{content}}"
-    ],
-    "participants": ["user1", "user2"],
-    "personality_context": {{...}},
-    "relationship_context": {{...}},
-    "tone_analysis": {{...}},
-    "word_count": 150
-}}"""
+"""
 
             # Generate summary with OpenAI
             response = self.client.chat.completions.create(
@@ -109,7 +148,7 @@ Example format:
             logger.error(f"Error generating summary: {e}")
             return {'error': str(e)}
     
-    def generate_summary(self, messages: List[Dict[str, Any]], participants: List[str]) -> Dict[str, Any]:
+    def generate_summary(self,data):
         """
         Generate basic summary (legacy method)
         
@@ -121,8 +160,8 @@ Example format:
             Summary data
         """
         # Use context-aware method with empty contexts
-        empty_contexts = {participant: {} for participant in participants}
-        return self.generate_summary_with_context(messages, participants, empty_contexts)
+        
+        return self.generate_summary_with_context(data)
     
     # def _build_context_prompt(self, participants: List[str], user_contexts: Dict[str, Any]) -> str:
     #     """Build context prompt from user profiles and relationship data"""
@@ -425,4 +464,30 @@ Example format:
 
 
 chat = ChatSummarizer()
-print(chat.generate_summary( [{}], [""]))
+test = [
+  {
+    "sender": "Keanu Czirjak",
+    "content": "what's up guys!!!",
+    "isGroup": true,
+    "conversationName": "the gang",
+    "appId": "com.discord.app",
+    "timestamp": 1751167953
+  },
+  {
+    "sender": "ejaz. 🐱",
+    "content": "yoooo keanu",
+    "isGroup": true,
+    "conversationName": "the gang",
+    "appId": "com.discord.app",
+    "timestamp": 1751167980
+  },
+   {
+    "sender": "MansaGeekz",
+    "content": "wsg g",
+    "isGroup": true,
+    "conversationName": "the gang",
+    "appId": "com.discord.app",
+    "timestamp": 1751167980
+  }
+]
+print(chat.generate_summary(test))

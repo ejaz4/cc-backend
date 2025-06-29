@@ -24,33 +24,38 @@ class ElevenLabsService:
             "xi-api-key": self.api_key
         }
         self.user_profile_repo = UserProfileRepository()
-    
-    def get_available_voices(self) -> List[Dict[str, Any]]:
+
+    def get_available_voices(self) -> List[str]:
         """Get list of available ElevenLabs voices"""
         try:
             response = requests.get(f"{self.base_url}/voices", headers=self.headers)
             response.raise_for_status()
-            
-            voices_data = response.json()
-            voices = []
-            
-            for voice in voices_data.get('voices', []):
-                voice_info = {
-                    'voice_id': voice.get('voice_id'),
-                    'name': voice.get('name'),
-                    'category': voice.get('category'),
-                    'description': voice.get('description'),
-                    'labels': voice.get('labels', {}),
-                    'preview_url': voice.get('preview_url'),
-                    'similarity_boost': voice.get('similarity_boost'),
-                    'stability': voice.get('stability'),
-                    'style': voice.get('style'),
-                    'use_speaker_boost': voice.get('use_speaker_boost')
-                }
-                voices.append(voice_info)
-            
-            return voices
-            
+
+            # voices_data = response.json()
+            voices = {"Viraj": "Ext7H3eEv8VE8fllrG5V",
+                      "Akshith": "5AoQXpmMtIJan2CwtAOc",
+                      "Lakshan": "umz7RhlNzd4xcAqREdXt",
+                      "Keanu": "bFzANtxrZVStytIgIj6n",
+                      "Ejaz": "4EzftP6bvnPeQhye9MOz"}
+            # name:id
+
+            # for voice in voices_data.get('voices', []):
+            #     voice_info = {
+            #         'voice_id': voice.get('voice_id'),
+            #         'name': voice.get('name'),
+            #         'category': voice.get('category'),
+            #         'description': voice.get('description'),
+            #         'labels': voice.get('labels', {}),
+            #         'preview_url': voice.get('preview_url'),
+            #         'similarity_boost': voice.get('similarity_boost'),
+            #         'stability': voice.get('stability'),
+            #         'style': voice.get('style'),
+            #         'use_speaker_boost': voice.get('use_speaker_boost')
+            #     }
+            #     voices.append(voice_info)
+
+            return voices.keys()
+
         except Exception as e:
             logger.error(f"Error getting available voices: {e}")
             return []
