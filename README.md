@@ -37,7 +37,7 @@ A comprehensive Flask REST API backend for a Gen-Z-focused Android app that summ
 
 ## 🏗️ Architecture
 
-### Database Models
+### Database Models (PostgreSQL/Supabase)
 
 #### Core Models
 - **ConversationSession**: Multi-platform conversation sessions
@@ -91,7 +91,7 @@ A comprehensive Flask REST API backend for a Gen-Z-focused Android app that summ
 
 ### Prerequisites
 - Python 3.8+
-- MongoDB
+- Supabase account (PostgreSQL database)
 - ElevenLabs API key
 - OpenAI API key
 - Google Calendar API (optional)
@@ -109,19 +109,29 @@ cd cc-backend
 pip install -r requirements.txt
 ```
 
-3. **Set up environment variables**
+3. **Set up Supabase**
+   - Create a new project at [supabase.com](https://supabase.com)
+   - Get your project URL and anon key from Settings > API
+   - The database tables will be created automatically on first run
+
+4. **Set up environment variables**
 ```bash
-cp .env .env
+cp env.example .env
 ```
 
-Edit `.env` with your API keys:
+Edit `.env` with your configuration:
 ```env
-# Database
-MONGODB_URI=mongodb://localhost:27017/conversation_summarizer
+# Database Configuration (Supabase PostgreSQL)
+# Option 1: Direct PostgreSQL connection string
+DATABASE_URL=postgresql://postgres:[password]@[host]:5432/postgres
 
-# API Keys
-ELEVENLABS_API_KEY=your_elevenlabs_api_key
-OPENAI_API_KEY=your_openai_api_key
+# Option 2: Supabase credentials (will auto-generate DATABASE_URL)
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_KEY=your-supabase-anon-key
+
+# API Keys (Required)
+ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
+OPENAI_API_KEY=your_openai_api_key_here
 
 # Google Calendar (optional)
 GOOGLE_CLIENT_ID=your_google_client_id
@@ -131,9 +141,15 @@ GOOGLE_REDIRECT_URI=http://localhost:5000/api/assistant/calendar/callback
 # File Storage
 UPLOAD_FOLDER=uploads
 AUDIO_FOLDER=audio
+
+# Flask Configuration
+FLASK_HOST=0.0.0.0
+FLASK_PORT=5000
+FLASK_DEBUG=False
+SECRET_KEY=your-secret-key-here
 ```
 
-4. **Run the application**
+5. **Run the application**
 ```bash
 python main.py
 ```
@@ -385,6 +401,22 @@ GET /api/voices
 
 ## 🚀 Deployment
 
+### Supabase Setup
+1. **Create Supabase Project**
+   - Go to [supabase.com](https://supabase.com)
+   - Create a new project
+   - Note your project URL and anon key
+
+2. **Configure Environment**
+```env
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_KEY=your-supabase-anon-key
+```
+
+3. **Database Tables**
+   - Tables are created automatically on first run
+   - No manual setup required
+
 ### Docker Deployment
 ```dockerfile
 FROM python:3.9-slim
@@ -403,14 +435,15 @@ CMD ["python", "main.py"]
 ```env
 # Production settings
 FLASK_ENV=production
-MONGODB_URI=mongodb://production-db:27017/conversation_summarizer
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_KEY=your-supabase-anon-key
 ELEVENLABS_API_KEY=your_production_key
 OPENAI_API_KEY=your_production_key
 ```
 
 ### Scaling Considerations
-- MongoDB clustering for high availability
-- Redis for session management
+- Supabase handles database scaling automatically
+- Redis for session management (optional)
 - CDN for audio file delivery
 - Load balancer for API distribution
 

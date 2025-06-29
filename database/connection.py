@@ -1,75 +1,104 @@
-import os
-from pymongo import MongoClient
-from pymongo.errors import ConnectionFailure
 import logging
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, scoped_session
+from sqlalchemy.pool import StaticPool
+from contextlib import contextmanager
+
 from config import Config
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class MongoDBConnection:
-    def __init__(self, connection_string=None, database_name=None):
-        """
-        Initialize MongoDB connection
-        
-        Args:
-            connection_string (str): MongoDB connection string
-            database_name (str): Name of the database to use
-        """
-        self.connection_string = connection_string or Config.MONGODB_URI
-        self.database_name = database_name or Config.MONGODB_DATABASE
-        self.client = None
-        self.db = None
-        
-    def connect(self):
-        """Establish connection to MongoDB"""
-        try:
-            self.client = MongoClient(self.connection_string)
-            # Test the connection
-            self.client.admin.command('ping')
-            self.db = self.client[self.database_name]
-            logger.info(f"Successfully connected to MongoDB database: {self.database_name}")
-            return True
-        except ConnectionFailure as e:
-            logger.error(f"Failed to connect to MongoDB: {e}")
-            return False
-        except Exception as e:
-            logger.error(f"Unexpected error connecting to MongoDB: {e}")
-            return False
-    
-    def disconnect(self):
-        """Close MongoDB connection"""
-        if self.client:
-            self.client.close()
-            logger.info("MongoDB connection closed")
-    
-    def get_database(self):
-        """Get the database instance"""
-        if not self.db:
-            self.connect()
-        return self.db
-    
-    def get_collection(self, collection_name):
-        """Get a specific collection from the database"""
-        db = self.get_database()
-        return db[collection_name]
+# Create SQLAlchemy base class
+Base = declarative_base()
 
-# Global connection instance
-mongodb_connection = MongoDBConnection()
+# Global engine and session factory
+engine = None
+SessionLocal = None
 
+def init_database():
+    """Initialize database connection"""
+    global engine, SessionLocal
+    
+    try:
+        # Create engine
+        engine = create_engine(
+            Config.DATABASE_URL,
+            poolclass=StaticPool,
+            pool_pre_ping=True,
+            echo=Config.DEBUG  # Log SQL queries in debug mode
+        )
+        
+        # Create session factory
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        
+        # Test connection
+        with engine.connect() as conn:
+            conn.execute("SELECT 1")
+        
+        logger.info("Database connection established successfully")
+        
+    except Exception as e:
+        logger.error(f"Failed to connect to database: {e}")
+        raise
+
+def get_db_session():
+    """Get database session"""
+    if SessionLocal is None:
+        init_database()
+    
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+@contextmanager
 def get_db():
-    """Get database instance"""
-    return mongodb_connection.get_database()
+    """Context manager for database sessions"""
+    if SessionLocal is None:
+        init_database()
+    
+    db = SessionLocal()
+    try:
+        yield db
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
-def get_collection(collection_name):
-    """Get collection instance"""
-    return mongodb_connection.get_collection(collection_name)
+def create_tables():
+    """Create all tables"""
+    if engine is None:
+        init_database()
+    
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables created successfully")
+    except Exception as e:
+        logger.error(f"Failed to create tables: {e}")
+        raise
 
-def connect_db():
-    """Connect to database"""
-    return mongodb_connection.connect()
+def drop_tables():
+    """Drop all tables (use with caution!)"""
+    if engine is None:
+        init_database()
+    
+    try:
+        Base.metadata.drop_all(bind=engine)
+        logger.info("Database tables dropped successfully")
+    except Exception as e:
+        logger.error(f"Failed to drop tables: {e}")
+        raise
 
-def disconnect_db():
-    """Disconnect from database"""
-    mongodb_connection.disconnect() 
+def check_connection():
+    """Check if database connection is working"""
+    try:
+        with get_db() as db:
+            db.execute("SELECT 1")
+        return True
+    except Exception as e:
+        logger.error(f"Database connection check failed: {e}")
+        return False 

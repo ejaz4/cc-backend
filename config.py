@@ -5,40 +5,62 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
-    """Base configuration class"""
-    # MongoDB settings
-    MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/')
-    MONGODB_DATABASE = os.getenv('MONGODB_DATABASE', 'whatsapp_summarizer')
+    """Configuration class for the application"""
     
-    # ElevenLabs settings
-    #ELEVENLABS_API_KEY_old = os.getenv('ELEVENLABS_API_KEY')
-    ELEVENLABS_API_KEY = 'sk_ea44a8ae63500d4e10e9ff6a7bd3c041a0fe27260cfc79c2'
-    ELEVENLABS_BASE_URL = 'https://api.elevenlabs.io/v1'
+    # Flask Configuration
+    SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key')
+    DEBUG = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
     
-    # OpenAI settings
+    # Database Configuration (Supabase PostgreSQL)
+    SUPABASE_URL = os.getenv('SUPABASE_URL')
+    SUPABASE_KEY = os.getenv('SUPABASE_KEY')
+    DATABASE_URL = os.getenv('DATABASE_URL')  # Direct PostgreSQL connection string
+    
+    # If DATABASE_URL is not provided, construct it from Supabase credentials
+    if not DATABASE_URL and SUPABASE_URL and SUPABASE_KEY:
+        # Extract host from Supabase URL and construct PostgreSQL connection
+        # Supabase URL format: https://project-ref.supabase.co
+        # PostgreSQL connection: postgresql://postgres:[password]@[host]:5432/postgres
+        host = SUPABASE_URL.replace('https://', '').replace('.supabase.co', '')
+        DATABASE_URL = f"postgresql://postgres:{SUPABASE_KEY}@{host}.supabase.co:5432/postgres"
+    
+    # API Keys
+    ELEVENLABS_API_KEY = os.getenv('ELEVENLABS_API_KEY')
     OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-    OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4')
     
-    # File storage settings
-    UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', 'uploads')
-    AUDIO_FOLDER = os.getenv('AUDIO_FOLDER', 'audio')
-    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
-    
-    # Google Calendar settings (optional)
+    # Google Calendar Configuration (Optional)
     GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
     GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
-    GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI')
+    GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:5000/api/assistant/calendar/callback')
     
-    # App settings
-    MAX_SUMMARY_LENGTH = int(os.getenv('MAX_SUMMARY_LENGTH', '500'))
-    SUPPORTED_AUDIO_FORMATS = ['mp3', 'wav', 'ogg']
+    # File Storage Configuration
+    UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', 'uploads')
+    AUDIO_FOLDER = os.getenv('AUDIO_FOLDER', 'audio')
     
-    @staticmethod
-    def init_app(app):
-        """Initialize app with configuration"""
-        # Create necessary directories
-        os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
-        os.makedirs(Config.AUDIO_FOLDER, exist_ok=True)
+    # OpenAI Configuration
+    OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4')
+    
+    # ElevenLabs Configuration
+    ELEVENLABS_BASE_URL = os.getenv('ELEVENLABS_BASE_URL', 'https://api.elevenlabs.io/v1')
+    
+    @classmethod
+    def validate_config(cls):
+        """Validate required configuration"""
+        required_vars = [
+            'DATABASE_URL',
+            'ELEVENLABS_API_KEY',
+            'OPENAI_API_KEY'
+        ]
+        
+        missing_vars = []
+        for var in required_vars:
+            if not getattr(cls, var):
+                missing_vars.append(var)
+        
+        if missing_vars:
+            raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
+        
+        return True
 
 class DevelopmentConfig(Config):
     """Development configuration"""
@@ -51,7 +73,7 @@ class ProductionConfig(Config):
 class TestingConfig(Config):
     """Testing configuration"""
     TESTING = True
-    MONGODB_DATABASE = 'test_whatsapp_summarizer'
+    DATABASE_URL = 'test_whatsapp_summarizer'
 
 # Configuration dictionary
 config = {
